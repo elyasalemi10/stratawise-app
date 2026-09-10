@@ -31,6 +31,25 @@ export interface AutosendRunResult {
   periodIndex?: number;
 }
 
+/** Postgres 23505 on the one-batch-per-budget-period index. The error
+ *  arrives as a message string from the action layer, so it is matched by
+ *  the index name rather than by a code we no longer have. */
+function isDuplicatePeriod(error: string | undefined): boolean {
+  if (!error) return false;
+  const m = error.toLowerCase();
+  return m.includes("levy_batches_one_per_budget_period") || m.includes("duplicate key");
+}
+
+/** The date the next still-pending period will fire on, or null when the
+ *  budget has been fully levied. */
+function nextPlannedDate(
+  planned: PlannedPeriod[],
+  overrides: Record<string, string>,
+): string | null {
+  const next = planned.find((p) => p.status === "pending");
+  return next ? (overrides[next.monthKey] ?? next.plannedDate) : null;
+}
+
 export async function runAutosendForSchedule(
   scheduleId: string,
   todayIso: string,
@@ -88,6 +107,17 @@ export async function runAutosendForSchedule(
       }
     }
   }
+  // Written back now rather than only on the paths that get far enough to
+  // save. A run that errors after this point used to throw the sync away, so
+  // the next night started by rediscovering the same manually-issued
+  // quarters, and the page went on offering to issue them until a run
+  // happened to succeed.
+  if (plannedDirty) {
+    await supabase
+      .from("levy_autosend_schedules")
+      .update({ planned_periods: planned, updated_at: new Date().toISOString() })
+      .eq("id", scheduleId);
+  }
 
   // ── 3. Find next pending period eligible to fire today ──
   // Allow per-month overrides , the manager may have moved this
@@ -105,9 +135,7 @@ export async function runAutosendForSchedule(
     // Either way, push next_send_date forward to the next pending one's
     // planned date (or null if everything's done).
     const nextFuture = planned.find((p) => p.status === "pending");
-    const nextDate = nextFuture
-      ? (overrides[nextFuture.monthKey] ?? nextFuture.plannedDate)
-      : null;
+    const nextDate = nextPlannedDate(planned, overrides);
     await supabase
       .from("levy_autosend_schedules")
       .update({
@@ -156,6 +184,28 @@ export async function runAutosendForSchedule(
     _systemPerformerId: performerId,
   });
   if (create.error || !create.batchId) {
+    // A unique violation here means another writer got this period first:
+    // a retried invocation, an overlapping run, or the manager pressing
+    // Generate at the same moment. That is the constraint doing its job, not
+    // a failure. Mark it done and let the next run pick up the next period.
+    if (isDuplicatePeriod(create.error)) {
+      nextPending.status = "done";
+      await supabase
+        .from("levy_autosend_schedules")
+        .update({
+          planned_periods: planned,
+          next_send_date: nextPlannedDate(planned, overrides),
+          last_error: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", scheduleId);
+      return {
+        scheduleId,
+        status: "already_done",
+        periodIndex: nextPending.periodIndex,
+        reason: "this period already has a batch",
+      };
+    }
     return { scheduleId, status: "error", reason: create.error ?? "createLevyBatch returned no id" };
   }
 
@@ -182,12 +232,7 @@ export async function runAutosendForSchedule(
   // ── 6. Persist: mark this period done, advance next_send_date ──
   nextPending.status = "done";
   nextPending.batchId = create.batchId;
-  plannedDirty = true;
-  void plannedDirty; // satisfy noUnusedLocals
-  const nextFuture = planned.find((p) => p.status === "pending");
-  const nextDate = nextFuture
-    ? (overrides[nextFuture.monthKey] ?? nextFuture.plannedDate)
-    : null;
+  const nextDate = nextPlannedDate(planned, overrides);
 
   // Fallback FY-aligned compute when planned_periods is empty (legacy
   // schedules that pre-date the planned_periods column).

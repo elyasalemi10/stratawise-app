@@ -2,8 +2,8 @@
 
 import { getLevyBatches } from "@/lib/actions/levy";
 import { requireOCAccess } from "@/lib/auth";
-import { createServerClient } from "@/lib/supabase";
 import { getOC } from "@/lib/actions/oc";
+import { listManagerInboxes } from "@/lib/actions/manager-username";
 import { getOCBudgets } from "@/lib/actions/budget";
 import {
   getBudgetPlannedPeriods,
@@ -27,41 +27,25 @@ export interface LeviesPageData {
 
 export async function getLeviesPageData(ocId: string): Promise<LeviesPageData> {
   await requireOCAccess(ocId);
-  const supabase = createServerClient();
 
-  const [batches, oc, autosend, budgets, { data: primaryManagerRow }] =
-    await Promise.all([
-      getLevyBatches(ocId),
-      getOC(ocId),
-      getLevyAutosendSchedule(ocId),
-      getOCBudgets(ocId),
-      // Real mailbox addresses, resolved the same way the batch detail page
-      // does it, so nothing here ever names a provider.
-      supabase
-        .from("oc_members")
-        .select("profile_id, profiles!inner(email, email_username)")
-        .eq("oc_id", ocId)
-        .eq("role", "strata_manager")
-        .is("left_at", null)
-        .order("joined_at", { ascending: true })
-        .limit(1)
-        .maybeSingle(),
-    ]);
+  const [batches, oc, autosend, budgets, inboxes] = await Promise.all([
+    getLevyBatches(ocId),
+    getOC(ocId),
+    getLevyAutosendSchedule(ocId),
+    getOCBudgets(ocId),
+    // Mailboxes we can actually send AS: the firm's connected Gmail
+    // subscriptions plus the manager's permanent StrataWise alias.
+    //
+    // This used to read profiles.email, which is whatever address the
+    // manager signed up with. We do not own that domain and it is not a
+    // connected mailbox, so offering it as a From meant either a message
+    // that fails the recipient's SPF check or one that silently goes out as
+    // something else. Same list the lot email composer uses, so there is one
+    // answer to what this firm can send as.
+    listManagerInboxes(),
+  ]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const primaryProf = (primaryManagerRow as any)?.profiles as
-    | { email: string | null; email_username: string | null }
-    | null;
-  const mailboxOptions: Array<{ value: string; label: string }> = [];
-  if (primaryProf?.email) {
-    mailboxOptions.push({ value: primaryProf.email, label: primaryProf.email });
-  }
-  if (primaryProf?.email_username) {
-    const alias = `${primaryProf.email_username}@stratawise.com.au`;
-    if (!mailboxOptions.some((o) => o.value.toLowerCase() === alias.toLowerCase())) {
-      mailboxOptions.push({ value: alias, label: alias });
-    }
-  }
+  const mailboxOptions = inboxes.map((i) => ({ value: i.email, label: i.email }));
   if (mailboxOptions.length === 0) {
     mailboxOptions.push({
       value: "noreply@stratawise.com.au",
@@ -92,9 +76,24 @@ export async function getLeviesPageData(ocId: string): Promise<LeviesPageData> {
     }),
   );
 
+  // What is still to run, decided against the batches that actually exist
+  // rather than against planned_periods, which is a snapshot written when
+  // the schedule was saved and only refreshed by the cron. Issue Q1 by hand
+  // and the page kept offering to issue it again until the next nightly run.
+  const selected = autosend.budget_id
+    ? Object.fromEntries(preloadedPairs)[autosend.budget_id]
+    : undefined;
+  const upcoming = (selected ?? [])
+    .filter((p) => !p.done)
+    .map((p) => ({
+      monthKey: p.monthKey,
+      plannedDate: autosend.date_overrides?.[p.monthKey] ?? p.plannedDate,
+    }));
+
   return {
     schedule: {
       schedule: autosend,
+      upcoming,
       billingCycle:
         (oc as unknown as { billing_cycle?: string } | null)?.billing_cycle ?? "quarterly",
       fyStartMonth:

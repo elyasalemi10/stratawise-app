@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -42,8 +41,16 @@ import { formatDateLong } from "@/lib/utils";
 //
 // The editor below is lifted from that settings tab unchanged in behaviour.
 
+/** A run that has not happened yet. Resolved server-side against the
+ *  batches that actually exist, not against the schedule's own snapshot. */
+export interface UpcomingRun {
+  monthKey: string;
+  plannedDate: string;
+}
+
 export interface LevyScheduleData {
   schedule: LevyAutosendSchedule;
+  upcoming: UpcomingRun[];
   billingCycle: string;
   fyStartMonth: number;
   mailboxOptions: Array<{ value: string; label: string }>;
@@ -153,36 +160,6 @@ export function LevyScheduleStrip({
         </SheetContent>
       </Sheet>
     </>
-  );
-}
-
-/**
- * The runs that have not happened yet, above the batches that have.
- *
- * The schedule already computes these; they were only ever visible inside
- * the editor, so the case that actually bites, a run landing on a date the
- * manager does not want, was two clicks away from being noticed. Here the
- * page reads as one timeline: what went out, and what is queued.
- */
-export function QueuedRuns({ schedule }: { schedule: LevyAutosendSchedule }) {
-  if (!schedule.enabled) return null;
-  const pending = schedule.planned_periods.filter((p) => p.status === "pending");
-  if (pending.length === 0) return null;
-
-  return (
-    <div className="overflow-hidden rounded-md border border-dashed border-border bg-muted/30">
-      {pending.slice(0, 4).map((p, i) => (
-        <div
-          key={p.monthKey}
-          className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-2.5 last:border-b-0"
-        >
-          <span className="text-sm text-muted-foreground">
-            {ordinalRunLabel(i)} run, {formatDateLong(p.plannedDate)}
-          </span>
-          <Badge variant="neutral">Scheduled</Badge>
-        </div>
-      ))}
-    </div>
   );
 }
 

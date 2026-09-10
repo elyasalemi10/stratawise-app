@@ -10,7 +10,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { LeviesTable } from "./levies-table";
 import { getLeviesPageData, type LeviesPageData } from "./data";
 import { LeviesSkeleton } from "./levies-skeleton";
-import { LevyScheduleStrip, QueuedRuns } from "./levy-schedule";
+import { LevyScheduleStrip } from "./levy-schedule";
 
 export function LeviesClient({ ocId, ocCode }: { ocId: string; ocCode: string }) {
   const fetcher = useCallback(() => getLeviesPageData(ocId), [ocId]);
@@ -60,15 +60,9 @@ export function LeviesClient({ ocId, ocCode }: { ocId: string; ocCode: string })
           }
         />
       ) : (
-        <>
-          {/* Runs that have not happened yet, above the ones that have, so
-              the page reads as one timeline. The dates were only ever
-              visible inside the editor, which put the case that actually
-              bites, a run landing on a day the manager does not want, two
-              clicks from being noticed. */}
-          <QueuedRuns schedule={schedule.schedule} />
-          <LeviesTable ocCode={ocCode} batches={batches} />
-        </>
+        // Scheduled runs are rows in this table, at the top, so the page
+        // reads as one timeline: what is coming, then what has gone out.
+        <LeviesTable ocCode={ocCode} batches={batches} upcoming={schedule.upcoming} />
       )}
     </div>
   );

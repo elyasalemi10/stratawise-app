@@ -5,6 +5,7 @@ import { resolveId } from "@/lib/short-code";
 import { getLevyBatchDetail } from "@/lib/actions/levy";
 import { requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
+import { listManagerInboxes } from "@/lib/actions/manager-username";
 
 // One aggregate fetch for a levy batch.
 //
@@ -45,56 +46,29 @@ export async function getBatchDetailPageData(
   //
   // Mailboxes are always real email addresses, never a provider name
   // ("Resend"), so the manager sees exactly what the recipient will see.
-  // Two sources: the firm's connected Gmail mailbox, and the manager's
+  // Two sources: the firm's connected Gmail mailboxes, and the manager's
   // permanent StrataWise alias. De-duped; the dialog renders a single option
   // as static text and two or more as a dropdown.
   const levyIds = batch.levies.map((l) => l.id);
-  const [{ data: escalations }, { data: mcRow }, { data: primaryManagerRow }] =
-    await Promise.all([
-      levyIds.length
-        ? supabase
-            .from("escalation_instances")
-            .select("levy_notice_id, current_step")
-            .in("levy_notice_id", levyIds)
-        : Promise.resolve({ data: [] as Array<{ levy_notice_id: string; current_step: number }> }),
-      supabase
-        .from("management_companies")
-        .select("mail_provider, mail_provider_config")
-        .eq("id", oc.management_company_id)
-        .maybeSingle(),
-      supabase
-        .from("oc_members")
-        .select("profile_id, profiles!inner(email, email_username, first_name, last_name)")
-        .eq("oc_id", ocId)
-        .eq("role", "strata_manager")
-        .is("left_at", null)
-        .order("joined_at", { ascending: true })
-        .limit(1)
-        .maybeSingle(),
-    ]);
+  const [{ data: escalations }, inboxes] = await Promise.all([
+    levyIds.length
+      ? supabase
+          .from("escalation_instances")
+          .select("levy_notice_id, current_step")
+          .in("levy_notice_id", levyIds)
+      : Promise.resolve({ data: [] as Array<{ levy_notice_id: string; current_step: number }> }),
+    listManagerInboxes(),
+  ]);
 
-  const mailRow = mcRow as {
-    mail_provider: string | null;
-    mail_provider_config: { domain?: string } | null;
-  } | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const primary = (primaryManagerRow as any)?.profiles as
-    | { email: string | null; email_username: string | null }
-    | null;
-  const stratawiseAlias = primary?.email_username
-    ? `${primary.email_username}@stratawise.com.au`
-    : null;
-
-  const mailboxOptions: Array<{ value: string; label: string }> = [];
-  if (mailRow?.mail_provider === "gmail" && primary?.email) {
-    mailboxOptions.push({ value: primary.email, label: primary.email });
-  }
-  if (
-    stratawiseAlias &&
-    !mailboxOptions.some((o) => o.value.toLowerCase() === stratawiseAlias.toLowerCase())
-  ) {
-    mailboxOptions.push({ value: stratawiseAlias, label: stratawiseAlias });
-  }
+  // Mailboxes we can actually send AS. It used to offer profiles.email,
+  // the address the manager signed up with, whenever the firm had Gmail
+  // connected at all: firm-level connection is not the same as THIS mailbox
+  // being subscribed, and we do not own that domain either way.
+  // listManagerInboxes reads the subscriptions themselves.
+  const mailboxOptions = inboxes.map((inbox) => ({
+    value: inbox.email,
+    label: inbox.email,
+  }));
   if (mailboxOptions.length === 0) {
     mailboxOptions.push({
       value: "noreply@stratawise.com.au",

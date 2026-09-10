@@ -7,6 +7,8 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { formatDateLong } from "@/lib/utils";
+import { ordinalRunLabel } from "@/lib/levy-autosend-helpers";
+import type { UpcomingRun } from "./levy-schedule";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
@@ -37,7 +39,17 @@ function fundAmount(
   return batch.fund_type === target ? batch.total_amount : null;
 }
 
-export function LeviesTable({ ocCode, batches }: { ocCode: string; batches: LevyBatchRow[] }) {
+export function LeviesTable({
+  ocCode,
+  batches,
+  upcoming = [],
+}: {
+  ocCode: string;
+  batches: LevyBatchRow[];
+  /** Runs the schedule will make but has not made yet. Rendered above the
+   *  real batches and deliberately not clickable: there is nothing to open. */
+  upcoming?: UpcomingRun[];
+}) {
   const router = useRouter();
   return (
     <div className="overflow-hidden rounded-md border border-border bg-card">
@@ -53,6 +65,7 @@ export function LeviesTable({ ocCode, batches }: { ocCode: string; batches: Levy
           </TableRow>
         </TableHeader>
         <TableBody>
+          <QueuedRunRows upcoming={upcoming} />
           {batches.map((batch) => {
             const operating = fundAmount(batch, "operating");
             const other = fundAmount(batch, "other");
@@ -104,5 +117,37 @@ export function LeviesTable({ ocCode, batches }: { ocCode: string; batches: Levy
         </TableBody>
       </Table>
     </div>
+  );
+}
+
+/**
+ * The runs that have not happened yet, as rows in the levy table.
+ *
+ * They were a separate dashed block above the table, which made them read as
+ * a notice about the table rather than as part of it. A levy run is a levy
+ * run whether it has happened or not, so it is a row: greyed, badged
+ * Scheduled, and not clickable, because there is nothing to open yet.
+ *
+ * Which ones are still pending is decided server-side against the batches
+ * that exist, so issuing a quarter by hand takes it off this list
+ * immediately rather than at the next nightly run.
+ */
+export function QueuedRunRows({ upcoming }: { upcoming: UpcomingRun[] }) {
+  if (upcoming.length === 0) return null;
+  return (
+    <>
+      {upcoming.slice(0, 4).map((run, i) => (
+        <TableRow key={run.monthKey} className="text-muted-foreground">
+          <TableCell>Regular</TableCell>
+          <TableCell>{ordinalRunLabel(i)} run</TableCell>
+          <TableCell />
+          <TableCell />
+          <TableCell className="text-sm">{formatDateLong(run.plannedDate)}</TableCell>
+          <TableCell>
+            <Badge variant="neutral">Scheduled</Badge>
+          </TableCell>
+        </TableRow>
+      ))}
+    </>
   );
 }
