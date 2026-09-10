@@ -7,7 +7,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/shared/empty-state";
-import { LevyStatusBadge } from "@/components/shared/levy-status-badge";
+import {
+  LevyStatusBadge,
+  type LevyStatusBadgeProps,
+} from "@/components/shared/levy-status-badge";
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
@@ -96,7 +99,7 @@ export function MyLeviesContent({ levies }: { levies: Levy[] }) {
                         <td className="px-4 py-3 text-foreground">{formatDateLong(levy.due_date)}</td>
                         <td className="px-4 py-3">
                           <LevyStatusBadge
-                            status={levy.status as "draft" | "issued" | "partially_paid" | "paid" | "overdue" | "written_off"}
+                            status={levy.status as LevyStatusBadgeProps["status"]}
                             dueDate={levy.due_date}
                             reminderSent={levy.reminder_sent}
                           />

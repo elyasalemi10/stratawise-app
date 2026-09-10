@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase";
-import { backfillThumbnail, ingestDocumentOcr, isIndexable } from "@/lib/ocr/ingest";
+import {
+  backfillPreview,
+  backfillThumbnail,
+  ingestDocumentOcr,
+  isIndexable,
+} from "@/lib/ocr/ingest";
 import { needsPdfConversion } from "@/lib/ocr/convert-to-pdf";
 
 // ============================================================================
@@ -47,7 +52,7 @@ export async function GET(request: NextRequest) {
   const supabase = createServerClient();
   const { data, error } = await supabase
     .from("documents")
-    .select("id, mime_type")
+    .select("id, mime_type, file_name")
     .eq("ocr_status", "pending")
     .order("created_at", { ascending: true })
     .limit(BATCH_SIZE);
@@ -63,7 +68,7 @@ export async function GET(request: NextRequest) {
   const eligible = (data ?? []).filter(
     (row) =>
       isIndexable(row.mime_type as string | null) ||
-      needsPdfConversion(row.mime_type as string | null),
+      needsPdfConversion(row.mime_type as string | null, row.file_name as string | null),
   );
   if (eligible.length === 0) {
     return NextResponse.json({ ok: true, processed: 0 });
@@ -76,6 +81,32 @@ export async function GET(request: NextRequest) {
   for (const row of eligible) {
     await ingestDocumentOcr(row.id as string);
     processed++;
+  }
+
+  // Convertible files that were told there was nothing to convert.
+  //
+  // Two ways a row lands here. It was uploaded before conversion was
+  // configured, so `skipped` was the honest answer at the time and nothing
+  // revisited it. Or its mime type arrived as octet-stream, which the
+  // mime-only check read as "not an Office file", and it was marked skipped
+  // next to an identical file that uploaded with the right header.
+  //
+  // This converges: every row it touches ends `complete` or `failed`, never
+  // `skipped` again, so it cannot pick the same file up twice.
+  const { data: unpreviewed } = await supabase
+    .from("documents")
+    .select("id, mime_type, file_name")
+    .eq("pdf_status", "skipped")
+    .is("thumbnail_storage_key", null)
+    .order("created_at", { ascending: false })
+    .limit(BATCH_SIZE);
+
+  let previews = 0;
+  for (const row of (unpreviewed ?? []) as Array<{
+    id: string; mime_type: string | null; file_name: string;
+  }>) {
+    if (!needsPdfConversion(row.mime_type, row.file_name)) continue;
+    if (await backfillPreview(row.id)) previews++;
   }
 
   // Anything still without a thumbnail, whichever pass should have made one.
@@ -94,5 +125,5 @@ export async function GET(request: NextRequest) {
     if (await backfillThumbnail(row.id)) thumbnails++;
   }
 
-  return NextResponse.json({ ok: true, processed, thumbnails });
+  return NextResponse.json({ ok: true, processed, previews, thumbnails });
 }

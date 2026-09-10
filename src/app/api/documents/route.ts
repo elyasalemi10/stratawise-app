@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
   // it has been rendered to PDF, so it still belongs in the queue. Marking it
   // `skipped` here is what used to leave every .docx unsearchable: the sweep
   // only looks at `pending` rows, so nothing ever came back for it.
-  const willConvert = needsPdfConversion(file.type);
+  const willConvert = needsPdfConversion(file.type, file.name);
   const willOcr = isIndexable(file.type) || willConvert;
   const { data: doc, error } = await supabase
     .from("documents")

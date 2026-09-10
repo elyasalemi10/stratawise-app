@@ -48,7 +48,48 @@ const CONVERTIBLE: Record<string, string> = {
   // manager cannot tell one bank export from another without opening it.
   "text/csv": "csv",
   "text/plain": "txt",
+  // Macro-enabled variants. Same engines, different mime.
+  "application/vnd.ms-excel.sheet.macroEnabled.12": "xlsm",
+  "application/vnd.ms-word.document.macroEnabled.12": "docm",
+  "application/vnd.ms-powerpoint.presentation.macroEnabled.12": "pptm",
 };
+
+/** Every extension we can render, so a file whose mime type arrived useless
+ *  is still convertible. */
+const CONVERTIBLE_EXTENSIONS = new Set([
+  ...Object.values(CONVERTIBLE),
+  // Not reachable by mime because these three share theirs with the
+  // non-macro form on some platforms.
+  "xlsm", "docm", "pptm",
+]);
+
+/**
+ * What to convert this file AS.
+ *
+ * The mime type is the browser's guess and it is frequently wrong or
+ * missing: an .xlsx dragged out of an email client, off a network share, or
+ * from a zip arrives as application/octet-stream more often than not, and on
+ * some Windows configurations .xlsx is reported as application/vnd.ms-excel.
+ * Every one of those was marked "nothing to convert" and the manager got a
+ * spreadsheet with no preview and no searchable text, next to an identical
+ * spreadsheet that happened to upload with the right header.
+ *
+ * So the mime type is asked first, because when it is right it is more
+ * specific than the extension, and the extension is asked second, because
+ * the manager named the file and they were not guessing.
+ */
+function inputFormatFor(
+  mimeType: string | null | undefined,
+  fileName: string | null | undefined,
+): string | null {
+  const byMime = CONVERTIBLE[(mimeType ?? "").toLowerCase()];
+  if (byMime) return byMime;
+
+  const ext = (fileName ?? "").includes(".")
+    ? (fileName ?? "").split(".").pop()!.trim().toLowerCase()
+    : "";
+  return ext && CONVERTIBLE_EXTENSIONS.has(ext) ? ext : null;
+}
 
 const API_BASE = "https://api.cloudconvert.com/v2";
 
@@ -62,9 +103,11 @@ const POLL_INTERVAL_MS = 2_000;
  *  something anyone reads in a preview pane, and the round trip is metered. */
 const MAX_INPUT_BYTES = 50 * 1024 * 1024;
 
-export function needsPdfConversion(mimeType: string | null | undefined): boolean {
-  if (!mimeType) return false;
-  return mimeType.toLowerCase() in CONVERTIBLE;
+export function needsPdfConversion(
+  mimeType: string | null | undefined,
+  fileName?: string | null,
+): boolean {
+  return inputFormatFor(mimeType, fileName) !== null;
 }
 
 export function isConversionConfigured(): boolean {
@@ -111,15 +154,16 @@ interface JobTask {
  */
 export async function convertToPdf(
   bytes: Buffer,
+  /** May be empty or wrong: the extension is the fallback. */
   mimeType: string,
   fileName: string,
 ): Promise<Buffer> {
   if (!isConversionConfigured()) {
     throw new ConversionError("Conversion is not configured for this deployment.");
   }
-  const inputFormat = CONVERTIBLE[mimeType.toLowerCase()];
+  const inputFormat = inputFormatFor(mimeType, fileName);
   if (!inputFormat) {
-    throw new ConversionError(`Nothing to convert for ${mimeType}.`);
+    throw new ConversionError(`Nothing to convert for ${mimeType} / ${fileName}.`);
   }
   if (bytes.byteLength > MAX_INPUT_BYTES) {
     throw new ConversionError(

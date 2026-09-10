@@ -15,7 +15,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { LevyStatusBadge } from "@/components/shared/levy-status-badge";
+import {
+  LevyStatusBadge,
+  type LevyStatusBadgeProps,
+} from "@/components/shared/levy-status-badge";
 import { DatePicker } from "@/components/shared/date-picker";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -79,6 +82,10 @@ export function BatchDetailContent({
   const [sendingIds, setSendingIds] = useState<Set<string>>(new Set());
 
   // Confirmation dialogs
+  // Controlled, so picking an item closes the menu. It used to stay open
+  // behind the dialog it had just launched, so dismissing the dialog put you
+  // back in front of the menu you thought you had left.
+  const [actionsOpen, setActionsOpen] = useState(false);
   const [showRegenerate, setShowRegenerate] = useState(false);
   const [showRegenConfirm, setShowRegenConfirm] = useState(false);
   const [showRecallConfirm, setShowRecallConfirm] = useState(false);
@@ -239,23 +246,22 @@ export function BatchDetailContent({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {draftCount > 0 ? (
+          {/* Only the one thing this batch is FOR sits outside the menu.
+              Resending everything was next to it at the same weight, which
+              is the wrong weight for an action you take once a quarter and
+              which mails every owner in the building. It is in the menu. */}
+          {draftCount > 0 && (
             <Button onClick={() => setEmailDialogOpen(true)} size="sm">
               <Mail className="size-3.5" />
               Send by email ({draftCount})
             </Button>
-          ) : batch.levies.length > 0 ? (
-            <Button onClick={() => setResendDialogOpen(true)} size="sm">
-              <Mail className="size-3.5" />
-              Resend all by email
-            </Button>
-          ) : null}
+          )}
 
           {/* Single Actions menu bundles every batch-level operation:
               mark sent, download zip, regenerate, recall, cancel. Popover
               over Base UI Menu primitive (the Menu Trigger render slot
               kept throwing error #31 with our Button). */}
-          <Popover>
+          <Popover open={actionsOpen} onOpenChange={setActionsOpen}>
             <PopoverTrigger className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground hover:bg-muted cursor-pointer">
               Actions
               <ChevronDown className="size-3.5" />
@@ -264,7 +270,7 @@ export function BatchDetailContent({
               {draftCount > 0 && (
                 <button
                   type="button"
-                  onClick={handleSendAll}
+                  onClick={() => { setActionsOpen(false); void handleSendAll(); }}
                   disabled={sendingAll}
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted cursor-pointer disabled:opacity-50"
                 >
@@ -272,9 +278,19 @@ export function BatchDetailContent({
                   Mark all as sent
                 </button>
               )}
+              {batch.levies.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setActionsOpen(false); setResendDialogOpen(true); }}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted cursor-pointer"
+                >
+                  <Mail className="size-3.5" />
+                  Resend all by email
+                </button>
+              )}
               <button
                 type="button"
-                onClick={handleDownloadAllZip}
+                onClick={() => { setActionsOpen(false); handleDownloadAllZip(); }}
                 disabled={downloadingZip}
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted cursor-pointer disabled:opacity-50"
               >
@@ -283,7 +299,7 @@ export function BatchDetailContent({
               </button>
               <button
                 type="button"
-                onClick={() => { setRegenDate(""); setShowRegenerate(true); }}
+                onClick={() => { setActionsOpen(false); setRegenDate(""); setShowRegenerate(true); }}
                 className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted cursor-pointer"
               >
                 <RefreshCw className="size-3.5" />
@@ -292,7 +308,7 @@ export function BatchDetailContent({
               {canRecall && (
                 <button
                   type="button"
-                  onClick={() => setShowRecallConfirm(true)}
+                  onClick={() => { setActionsOpen(false); setShowRecallConfirm(true); }}
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-muted cursor-pointer"
                 >
                   <Undo2 className="size-3.5" />
@@ -302,7 +318,7 @@ export function BatchDetailContent({
               {batch.status === "draft" && (
                 <button
                   type="button"
-                  onClick={() => setShowCancelConfirm(true)}
+                  onClick={() => { setActionsOpen(false); setShowCancelConfirm(true); }}
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-destructive hover:bg-destructive/5 cursor-pointer"
                 >
                   <Trash2 className="size-3.5" />
@@ -348,7 +364,7 @@ export function BatchDetailContent({
                   <div className="flex items-center gap-3">
                     <span className="font-semibold tabular-nums">{formatCurrency(levy.amount)}</span>
                     <LevyStatusBadge
-                      status={levy.status as "draft" | "issued" | "partially_paid" | "paid" | "overdue" | "written_off"}
+                      status={levy.status as LevyStatusBadgeProps["status"]}
                       dueDate={batch.due_date}
                       reminderSent={reminderSentSet.has(levy.id)}
                     />
@@ -525,7 +541,11 @@ export function BatchDetailContent({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRegenerate} disabled={regenerating}>
+            <AlertDialogAction
+              onClick={handleRegenerate}
+              disabled={regenerating}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
               {regenerating && <Loader2 className="size-4 animate-spin" />}
               Regenerate
             </AlertDialogAction>
@@ -547,7 +567,11 @@ export function BatchDetailContent({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRecall} disabled={recalling}>
+            <AlertDialogAction
+              onClick={handleRecall}
+              disabled={recalling}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
               {recalling && <Loader2 className="size-4 animate-spin" />}
               Recall
             </AlertDialogAction>

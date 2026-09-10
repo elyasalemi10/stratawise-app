@@ -124,7 +124,7 @@ export async function ingestDocumentOcr(documentId: string): Promise<void> {
   let sourceKey = doc.file_path;
   let sourceMime = doc.mime_type;
 
-  if (needsPdfConversion(doc.mime_type)) {
+  if (needsPdfConversion(doc.mime_type, doc.file_name)) {
     const rendition = await renderToPdf(documentId, doc);
     if (!rendition) {
       // Conversion is off or it failed. renderToPdf has already recorded
@@ -258,7 +258,7 @@ async function renderToPdf(
 
   try {
     const original = await fetchObject(doc.file_path);
-    const pdf = await convertToPdf(original, doc.mime_type!, doc.file_name);
+    const pdf = await convertToPdf(original, doc.mime_type ?? "", doc.file_name);
 
     // Sits next to the original under the same prefix, with a suffix rather
     // than a separate folder, so the two travel together when an OC's
@@ -313,6 +313,40 @@ async function renderToPdf(
  * Never throws. A file we cannot render keeps its plate, which is what it
  * has now.
  */
+/**
+ * Give a document a preview it should already have had.
+ *
+ * Two ways a row ends up convertible but with nothing to show. It was
+ * uploaded before conversion was configured for the deployment, so it was
+ * honestly marked `skipped` and nothing ever revisited it. Or its mime type
+ * arrived as octet-stream, the mime-only check said there was nothing to
+ * convert, and it was marked `skipped` next to an identical file that
+ * happened to upload with the right header.
+ *
+ * Independent of OCR status on purpose: a CSV is read directly and is
+ * already `complete`, which is exactly the row `ingestDocumentOcr` returns
+ * from first. The text was never the missing half.
+ */
+export async function backfillPreview(documentId: string): Promise<boolean> {
+  const supabase = createServerClient();
+  const { data: doc } = await supabase
+    .from("documents")
+    .select("id, file_path, file_name, mime_type, pdf_storage_key, pdf_status")
+    .eq("id", documentId)
+    .maybeSingle();
+  if (!doc) return false;
+  if (doc.pdf_status === "complete" && doc.pdf_storage_key) {
+    return backfillThumbnail(documentId);
+  }
+  if (!isConversionConfigured()) return false;
+  if (!needsPdfConversion(doc.mime_type, doc.file_name)) return false;
+
+  const rendition = await renderToPdf(documentId, doc);
+  if (!rendition) return false;
+  await backfillThumbnail(documentId);
+  return true;
+}
+
 export async function backfillThumbnail(documentId: string): Promise<boolean> {
   const supabase = createServerClient();
   const { data: doc } = await supabase

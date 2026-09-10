@@ -24,7 +24,14 @@ import { Badge } from "@/components/ui/badge";
 // ============================================================================
 
 export interface LevyStatusBadgeProps {
-  status: "draft" | "issued" | "partially_paid" | "paid" | "overdue" | "written_off";
+  status:
+    | "draft"
+    | "issued"
+    | "partially_paid"
+    | "paid"
+    | "overdue"
+    | "written_off"
+    | "cancelled";
   dueDate: string;            // 'YYYY-MM-DD'
   reminderSent?: boolean;     // true when escalation_instances row with current_step >= 1 exists
   className?: string;
@@ -48,6 +55,12 @@ export function LevyStatusBadge({
   }
   if (status === "draft") {
     return <Badge variant="neutral" className={className}>Draft</Badge>;
+  }
+  // Withdrawn before it was ever owed. It fell through to the future-dated
+  // branch below and rendered as "Issued", which is the opposite of true and
+  // is the one state a manager would act on if they believed it.
+  if (status === "cancelled") {
+    return <Badge variant="neutral" className={className}>Cancelled</Badge>;
   }
 
   // Active states , branch on past-due + reminder-sent.
