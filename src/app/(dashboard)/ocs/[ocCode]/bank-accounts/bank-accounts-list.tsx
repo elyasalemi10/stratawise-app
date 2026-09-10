@@ -90,7 +90,7 @@ export function BankAccountsList({
         <div className="flex items-center justify-between">
           <TabsList
             variant="line"
-            className="h-auto flex-wrap justify-start gap-2 border-0 bg-transparent p-0"
+            className="h-auto flex-wrap justify-start gap-2 bg-transparent p-0"
           >
             {accounts.map((a) => {
               const logo = logoFor(a.bsb, a.bank_name);

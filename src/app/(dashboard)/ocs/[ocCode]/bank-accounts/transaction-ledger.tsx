@@ -4,6 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EmptyState } from "@/components/shared/empty-state";
 import { cn } from "@/lib/utils";
@@ -22,6 +25,11 @@ import type { EntityKind, EntityOption } from "./data";
 // than the bank's: the bank knows the date, the description and the amount,
 // and nobody but the manager knows that the $1,840 on the 14th was the
 // plumber. Until it is said out loud it lives in one person's memory.
+//
+// A real <table>, not a grid of divs. Four fixed columns with no sticky
+// anything is precisely what the primitive is for, and hand-rolling the
+// alignment meant every row carried its own copy of the column template and
+// any one of them could disagree with the header.
 
 export interface LedgerTxn {
   id: string;
@@ -114,22 +122,30 @@ export function TransactionLedger({
 
   return (
     <div className="overflow-hidden rounded-md border border-border bg-card">
-      <div className="grid grid-cols-[6.5rem_minmax(0,1fr)_10rem_7.5rem] items-center gap-3 border-b border-border bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground">
-        <span>Date</span>
-        <span>Description</span>
-        <span>Entity</span>
-        <span className="text-right">Amount</span>
-      </div>
-      {shown.map((txn) => (
-        <LedgerRow
-          key={txn.id}
-          ocId={ocId}
-          txn={txn}
-          entityOptions={entityOptions}
-          current={txn.entity ? optionByKey.get(`${txn.entity.kind}:${txn.entity.id}`) ?? null : null}
-          onAssign={onAssign}
-        />
-      ))}
+      <Table variant="bordered">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[7rem]">Date</TableHead>
+            <TableHead>Description</TableHead>
+            <TableHead className="w-[14rem]">Entity</TableHead>
+            <TableHead className="w-[9rem] text-right">Amount</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {shown.map((txn) => (
+            <LedgerRow
+              key={txn.id}
+              ocId={ocId}
+              txn={txn}
+              entityOptions={entityOptions}
+              current={
+                txn.entity ? optionByKey.get(`${txn.entity.kind}:${txn.entity.id}`) ?? null : null
+              }
+              onAssign={onAssign}
+            />
+          ))}
+        </TableBody>
+      </Table>
       {hasMore && <div ref={sentinel} className="h-10" />}
     </div>
   );
@@ -152,20 +168,25 @@ function LedgerRow({
   const inactive = txn.voided || txn.matchStatus === "excluded";
 
   return (
-    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)_10rem_7.5rem] items-center gap-3 border-b border-border px-4 py-2 last:border-b-0">
-      <span className="text-xs tabular-nums text-muted-foreground">
+    <TableRow className="h-11">
+      <TableCell className="text-xs tabular-nums text-muted-foreground">
         {formatDay(txn.date)}
-      </span>
-      <span className="min-w-0 truncate text-sm text-foreground">{txn.description}</span>
-      <EntityPill
-        ocId={ocId}
-        txnId={txn.id}
-        current={current}
-        assigned={txn.entity}
-        options={entityOptions}
-        onAssign={onAssign}
-      />
-      <span
+      </TableCell>
+      <TableCell className="max-w-0 truncate text-sm text-foreground">
+        {txn.description}
+      </TableCell>
+      {/* The pill has its own hover, so the row's steps aside for it. */}
+      <TableCell data-row-hover-off>
+        <EntityPill
+          ocId={ocId}
+          txnId={txn.id}
+          current={current}
+          assigned={txn.entity}
+          options={entityOptions}
+          onAssign={onAssign}
+        />
+      </TableCell>
+      <TableCell
         className={cn(
           // The only colour on the row. Everything else is one shade, so a
           // column of green and red is the whole scan: money in, money out,
@@ -178,8 +199,8 @@ function LedgerRow({
         )}
       >
         {amount !== null ? currency.format(amount) : ""}
-      </span>
-    </div>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -234,17 +255,22 @@ function EntityPill({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
+      {/* A pill either way. Unassigned used to be bare text with a plus,
+          which read as a caption rather than as the control it is, so the
+          one column on the page that wants clicking was the one that did not
+          look clickable. */}
       <PopoverTrigger
         className={cn(
-          "inline-flex h-6 max-w-full cursor-pointer items-center gap-1 rounded-full px-2 text-xs font-medium transition-colors",
+          "inline-flex h-6 max-w-full cursor-pointer items-center gap-1 rounded-full px-2.5 text-xs font-medium",
+          "ring-1 ring-inset transition-colors",
           current
-            ? "bg-secondary text-foreground ring-1 ring-inset ring-border hover:bg-secondary-hover"
-            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            ? "bg-secondary text-foreground ring-border hover:bg-secondary-hover"
+            : "bg-card text-muted-foreground ring-border hover:bg-muted hover:text-foreground",
           saving && "opacity-60",
         )}
       >
         {current ? (
-          <span className="truncate">{current.label}</span>
+          <span className="truncate">{current.short}</span>
         ) : (
           <>
             <Plus className="h-3 w-3 shrink-0" />
@@ -283,8 +309,12 @@ function EntityPill({
                       onClick={() => pick(on ? null : { kind: o.kind, id: o.id })}
                       className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
                     >
+                      {/* Name on top, at the size a name deserves; what it
+                          means underneath. A manager reconciling a receipt
+                          is looking for the person, and "Lot 3 · Unit 2"
+                          first made them read every row twice. */}
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm text-foreground">
+                        <span className="block truncate text-sm font-medium text-foreground">
                           {o.label}
                         </span>
                         {o.detail && (

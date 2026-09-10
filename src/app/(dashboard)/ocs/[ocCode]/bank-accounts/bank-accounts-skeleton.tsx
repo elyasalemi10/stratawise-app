@@ -4,6 +4,9 @@ import { Landmark, Upload } from "lucide-react";
 import { OCPageTitle } from "@/components/shared/page-title";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
 
 // Mirrors bank-accounts-list.tsx: a tab strip of accounts, a card holding
 // the Fund / BSB / Account number block alongside the actions, then the
@@ -21,7 +24,7 @@ export function BankAccountsSkeleton() {
       {/* One tab is the common case; a second OC account slides in without
           moving anything else. */}
       <div className="space-y-4">
-        <div className="flex w-full flex-wrap justify-start gap-0 border-b border-border">
+        <div className="flex w-full flex-wrap justify-start gap-0 border-b-2 border-primary">
           <span className="relative flex h-11 min-w-[6.5rem] items-center gap-2 px-4 text-sm font-medium text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-[color:var(--brand-gold)]">
             <Landmark className="h-4 w-4 shrink-0 text-muted-foreground" />
             <Skeleton className="h-3.5 w-24" />
@@ -48,23 +51,26 @@ export function BankAccountsSkeleton() {
         {/* The statement. Column headings are ours, so they render; only
             the lines shimmer. */}
         <div className="overflow-hidden rounded-md border border-border bg-card">
-          <div className="grid grid-cols-[6.5rem_minmax(0,1fr)_10rem_7.5rem] items-center gap-3 border-b border-border bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground">
-            <span>Date</span>
-            <span>Description</span>
-            <span>Entity</span>
-            <span className="text-right">Amount</span>
-          </div>
-          {Array.from({ length: 10 }).map((_, i) => (
-            <div
-              key={i}
-              className="grid grid-cols-[6.5rem_minmax(0,1fr)_10rem_7.5rem] items-center gap-3 border-b border-border px-4 py-2 last:border-b-0"
-            >
-              <Skeleton className="h-3 w-20" />
-              <Skeleton className="h-3.5 w-56 max-w-full" />
-              <Skeleton className="h-4 w-20 rounded-full" />
-              <Skeleton className="ml-auto h-3.5 w-16" />
-            </div>
-          ))}
+          <Table variant="bordered">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[7rem]">Date</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead className="w-[14rem]">Entity</TableHead>
+                <TableHead className="w-[9rem] text-right">Amount</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 10 }).map((_, i) => (
+                <TableRow key={i} className="h-11">
+                  <TableCell><Skeleton className="h-3 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-3.5 w-56 max-w-full" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-20 rounded-full" /></TableCell>
+                  <TableCell><Skeleton className="ml-auto h-3.5 w-16" /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       </div>
     </div>

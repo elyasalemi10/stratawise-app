@@ -63,9 +63,14 @@ export type EntityKind = "lot" | "contractor" | "maintenance_request";
 export interface EntityOption {
   kind: EntityKind;
   id: string;
+  /** The line that identifies it: a person's name, a firm, a job. */
   label: string;
-  /** Second line in the picker: the owner's name, the trade, the location. */
+  /** Underneath it: which lot, what trade, where. */
   detail?: string | null;
+  /** What the pill on the row says. Shorter than the label, because a
+   *  column is not a card: "Lot 3" fits, "Margaret Fitzgerald-Whitmore"
+   *  does not. */
+  short: string;
 }
 
 export interface BankAccountsPageData {
@@ -205,29 +210,45 @@ export async function getBankAccountsPageData(
   );
   const entityOptions: EntityOption[] = [
     ...((lots ?? []) as Array<{ id: string; lot_number: number; unit_number: string | null }>)
-      .map((l) => ({
-        kind: "lot" as const,
-        id: l.id,
-        label: `Lot ${l.lot_number}${l.unit_number ? ` · Unit ${l.unit_number}` : ""}`,
-        detail: ownerByLot.get(l.id) ?? null,
-      })),
+      .map((l) => {
+        const where = `Lot ${l.lot_number}${l.unit_number ? ` · Unit ${l.unit_number}` : ""}`;
+        const owner = ownerByLot.get(l.id) ?? null;
+        // The person first, because a manager reconciling a receipt is
+        // looking for the name on it. The lot underneath, because that is
+        // what the name means here. An unowned lot has only the one line.
+        return {
+          kind: "lot" as const,
+          id: l.id,
+          label: owner ?? where,
+          detail: owner ? where : null,
+          short: where,
+        };
+      }),
     ...((contractors ?? []) as Array<{
       id: string; name: string | null; business_name: string | null;
       company: string | null; trade: string | null;
-    }>).map((c) => ({
-      kind: "contractor" as const,
-      id: c.id,
-      label: c.business_name || c.company || c.name || "Contractor",
-      detail: c.trade,
-    })),
+    }>).map((c) => {
+      const name = c.business_name || c.company || c.name || "Contractor";
+      return {
+        kind: "contractor" as const,
+        id: c.id,
+        label: name,
+        detail: c.trade,
+        short: name,
+      };
+    }),
     ...((jobs ?? []) as Array<{
       id: string; reference_number: string | null; title: string | null; location: string | null;
-    }>).map((j) => ({
-      kind: "maintenance_request" as const,
-      id: j.id,
-      label: j.title || j.reference_number || "Maintenance job",
-      detail: j.location,
-    })),
+    }>).map((j) => {
+      const name = j.title || j.reference_number || "Maintenance job";
+      return {
+        kind: "maintenance_request" as const,
+        id: j.id,
+        label: name,
+        detail: j.location,
+        short: name,
+      };
+    }),
   ];
 
   return { accounts: rows, entityOptions };
