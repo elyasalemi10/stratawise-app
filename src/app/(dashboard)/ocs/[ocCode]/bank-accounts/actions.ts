@@ -4,6 +4,7 @@ import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 import { autoMatchBankTransactions } from "@/lib/banking/auto-match";
+import { logAudit } from "@/lib/audit";
 
 /**
  * Persist a batch of parsed CSV rows as bank_transactions, then run the
@@ -417,19 +418,26 @@ export async function deleteBankAccount(
 /**
  * Say what a transaction was for.
  *
- * Separate from reconciliation on purpose. Matching allocates an incoming
- * payment against a levy notice and balances a lot; this is the label on the
- * line, and most of the lines it matters for are money going OUT, where
- * there is no notice to match and never will be. Assigning the plumber to a
- * payment does not move a cent.
+ * For money going OUT this is a label and nothing else: naming the plumber
+ * on a payment moves no balance, and there is no notice to reconcile it
+ * against.
  *
- * Pass a null kind to clear it.
+ * For money coming IN and assigned to a LOT it is the reconciliation. The
+ * lot's balance is opening + charged - payments (see lot-balance.ts), and
+ * `payments` is the only subtraction in it, so a receipt that is not written
+ * there does not reduce what the owner owes no matter what else it updates.
+ * That was the bug: the row said the payment belonged to the lot and the lot
+ * still showed the full arrears.
+ *
+ * One payment per bank transaction, enforced by a unique index, so a receipt
+ * that auto-matched on import and is then re-assigned by hand cannot be
+ * subtracted twice.
  */
 export async function assignTransactionEntity(
   ocId: string,
   transactionId: string,
   entity: { kind: "lot" | "contractor" | "maintenance_request"; id: string } | null,
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; paymentRecorded?: boolean }> {
   const profile = await requireCompanyRole();
   await requireOCAccess(ocId);
   const supabase = createServerClient();
@@ -450,6 +458,59 @@ export async function assignTransactionEntity(
     if (!owner) return { error: "That is not something on this Owners Corporation." };
   }
 
+  const { data: txn } = await supabase
+    .from("bank_transactions")
+    .select("id, amount, transaction_date, description, bank_account_id, entity_kind, entity_id")
+    .eq("id", transactionId)
+    .eq("oc_id", ocId)
+    .maybeSingle();
+  if (!txn) return { error: "That transaction is no longer here." };
+
+  const amount = txn.amount !== null ? Number(txn.amount) : 0;
+  const isReceipt = amount > 0;
+  const wantsPayment = isReceipt && entity?.kind === "lot";
+
+  // Whatever it used to be attributed to stops being true the moment this
+  // changes, so the old payment goes before the new one is written. Deleting
+  // unconditionally also covers "was a lot, now a contractor" and "cleared".
+  const { error: clearErr } = await supabase
+    .from("payments")
+    .delete()
+    .eq("bank_transaction_id", transactionId)
+    .eq("oc_id", ocId);
+  if (clearErr) {
+    console.error("assignTransactionEntity: could not clear the old payment", clearErr);
+    return { error: "Couldn't save that. Try again." };
+  }
+
+  if (wantsPayment) {
+    // Which fund it lands in comes from the account it arrived in, not from
+    // a guess: an OC with separate trust accounts has one per fund, and a
+    // shared account still names one on the row.
+    const { data: account } = await supabase
+      .from("bank_accounts")
+      .select("fund_type")
+      .eq("id", txn.bank_account_id)
+      .maybeSingle();
+
+    const { error: payErr } = await supabase.from("payments").insert({
+      oc_id: ocId,
+      lot_id: entity!.id,
+      amount,
+      payment_date: txn.transaction_date ?? new Date().toISOString().slice(0, 10),
+      payment_method: "eft",
+      match_confidence: "manual",
+      fund_type: account?.fund_type ?? "operating",
+      bank_transaction_id: transactionId,
+      payment_reference: (txn.description ?? "").slice(0, 200) || null,
+      recorded_by: profile.id,
+    });
+    if (payErr) {
+      console.error("assignTransactionEntity: payment insert failed", payErr);
+      return { error: "Couldn't record that payment. Try again." };
+    }
+  }
+
   const { error } = await supabase
     .from("bank_transactions")
     .update({
@@ -457,6 +518,10 @@ export async function assignTransactionEntity(
       entity_id: entity?.id ?? null,
       entity_assigned_at: entity ? new Date().toISOString() : null,
       entity_assigned_by: entity ? profile.id : null,
+      // Only a receipt attributed to a lot is reconciled. A labelled expense
+      // is still unmatched, because there was never anything to match it to.
+      match_status: wantsPayment ? "manually_matched" : "unmatched",
+      matched_total: wantsPayment ? amount : 0,
     })
     .eq("id", transactionId)
     .eq("oc_id", ocId);
@@ -465,6 +530,19 @@ export async function assignTransactionEntity(
     console.error("assignTransactionEntity failed", error);
     return { error: "Couldn't save that. Try again." };
   }
+
+  if (wantsPayment) {
+    await logAudit({
+      profileId: profile.id,
+      ocId,
+      action: "payment_matched",
+      entityType: "payment",
+      entityId: transactionId,
+      after: { lot_id: entity!.id, amount, matched_by: "manual" },
+      metadata: { lot_id: entity!.id },
+    });
+  }
+
   revalidatePath(`/ocs/${ocId}/bank-accounts`);
-  return {};
+  return { paymentRecorded: wantsPayment };
 }

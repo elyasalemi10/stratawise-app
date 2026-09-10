@@ -57,12 +57,6 @@ function formatDay(iso: string | null): string {
   return dayFmt.format(new Date(`${iso}T00:00:00`));
 }
 
-const KIND_LABEL: Record<EntityKind, string> = {
-  lot: "Lots",
-  contractor: "Contractors",
-  maintenance_request: "Maintenance",
-};
-
 const KIND_ORDER: EntityKind[] = ["lot", "contractor", "maintenance_request"];
 
 /** How many rows are on screen before scrolling asks for more. */
@@ -122,16 +116,19 @@ export function TransactionLedger({
 
   return (
     <div className="overflow-hidden rounded-md border border-border bg-card">
-      <Table variant="bordered">
+      {/* Striped AND ruled. The stripe is what lets the eye run along one
+          row across four columns; the rule is what stops two same-shade
+          neighbours reading as one. The Lots register does both. */}
+      <Table variant="striped">
         <TableHeader>
           <TableRow>
             <TableHead className="w-[7rem]">Date</TableHead>
             <TableHead>Description</TableHead>
-            <TableHead className="w-[14rem]">Entity</TableHead>
+            <TableHead className="w-[14rem] text-center">Entity</TableHead>
             <TableHead className="w-[9rem] text-right">Amount</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableBody className="[&_tr]:border-b [&_tr]:border-border">
           {shown.map((txn) => (
             <LedgerRow
               key={txn.id}
@@ -176,7 +173,7 @@ function LedgerRow({
         {txn.description}
       </TableCell>
       {/* The pill has its own hover, so the row's steps aside for it. */}
-      <TableCell data-row-hover-off>
+      <TableCell className="text-center" data-row-hover-off>
         <EntityPill
           ocId={ocId}
           txnId={txn.id}
@@ -193,9 +190,12 @@ function LedgerRow({
           // and nothing else competing for it.
           "text-right text-sm font-bold tabular-nums",
           inactive && "line-through opacity-55",
+          // --success, not --success-foreground: the foreground token is a
+          // 20%-lightness green meant for text on a tinted badge, and at
+          // this weight on white it read as black.
           amount !== null && amount < 0
             ? "text-destructive"
-            : "text-[color:var(--success-foreground)]",
+            : "text-[color:var(--success)]",
         )}
       >
         {amount !== null ? currency.format(amount) : ""}
@@ -223,23 +223,29 @@ function EntityPill({
   const [query, setQuery] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const groups = useMemo(() => {
+  // One flat list, ordered lots then contractors then jobs. It was grouped
+  // under headings, and with one heading showing (most OCs have no
+  // contractors yet) the word "Lots" was a row of chrome above a list of
+  // lots. Each row already says what it is on its second line.
+  const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const matches = q
+    const filtered = q
       ? options.filter(
           (o) =>
             o.label.toLowerCase().includes(q) ||
             (o.detail ?? "").toLowerCase().includes(q),
         )
       : options;
-    return KIND_ORDER.map((kind) => ({
-      kind,
-      rows: matches.filter((o) => o.kind === kind),
-    })).filter((g) => g.rows.length > 0);
+    return [...filtered].sort(
+      (a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind),
+    );
   }, [options, query]);
 
   async function pick(next: { kind: EntityKind; id: string } | null) {
     const previous = assigned;
+    const label = next
+      ? options.find((o) => o.kind === next.kind && o.id === next.id)?.label
+      : null;
     // Optimistic. The pill is the whole point of the click and a round trip
     // before it changes reads as the click not having landed.
     onAssign(txnId, next);
@@ -250,6 +256,18 @@ function EntityPill({
     if (res.error) {
       onAssign(txnId, previous);
       toast.error(res.error);
+      return;
+    }
+    // Say so, because assigning an incoming payment to a lot does not just
+    // label the line: it records the payment, and the lot's balance moves.
+    // A silent click that quietly changes what someone owes is the wrong
+    // kind of quiet.
+    if (!next) {
+      toast.success("Assignment cleared");
+    } else if (res.paymentRecorded) {
+      toast.success(`Payment recorded against ${label ?? "the lot"}`);
+    } else {
+      toast.success(`Assigned to ${label ?? "it"}`);
     }
   }
 
@@ -290,58 +308,44 @@ function EntityPill({
           />
         </div>
         <div className="max-h-64 overflow-y-auto p-1">
-          {groups.length === 0 ? (
+          {matches.length === 0 ? (
             <p className="px-2 py-3 text-center text-sm text-muted-foreground">
               Nothing matches.
             </p>
           ) : (
-            groups.map((g) => (
-              <div key={g.kind}>
-                <p className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">
-                  {KIND_LABEL[g.kind]}
-                </p>
-                {g.rows.map((o) => {
-                  const on = assigned?.kind === o.kind && assigned.id === o.id;
-                  return (
-                    <button
-                      key={`${o.kind}:${o.id}`}
-                      type="button"
-                      onClick={() => pick(on ? null : { kind: o.kind, id: o.id })}
-                      className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
-                    >
-                      {/* Name on top, at the size a name deserves; what it
-                          means underneath. A manager reconciling a receipt
-                          is looking for the person, and "Lot 3 · Unit 2"
-                          first made them read every row twice. */}
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-foreground">
-                          {o.label}
-                        </span>
-                        {o.detail && (
-                          <span className="block truncate text-xs text-muted-foreground">
-                            {o.detail}
-                          </span>
-                        )}
+            matches.map((o) => {
+              const on = assigned?.kind === o.kind && assigned.id === o.id;
+              return (
+                // Clicking the one already chosen clears it, which is why
+                // there is no Clear button underneath: the tick is the
+                // toggle, and a second control for the same act just means
+                // two ways to get it wrong.
+                <button
+                  key={`${o.kind}:${o.id}`}
+                  type="button"
+                  onClick={() => pick(on ? null : { kind: o.kind, id: o.id })}
+                  className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted"
+                >
+                  {/* Name on top, at the size a name deserves; what it means
+                      underneath. A manager reconciling a receipt is looking
+                      for the person, and "Lot 3 · Unit 2" first made them
+                      read every row twice. */}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-foreground">
+                      {o.label}
+                    </span>
+                    {o.detail && (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {o.detail}
                       </span>
-                      {on && <Check className="h-3.5 w-3.5 shrink-0 text-primary" strokeWidth={3} />}
-                    </button>
-                  );
-                })}
-              </div>
-            ))
+                    )}
+                  </span>
+                  {on && <Check className="h-3.5 w-3.5 shrink-0 text-primary" strokeWidth={3} />}
+                </button>
+              );
+            })
           )}
         </div>
-        {current && (
-          <div className="border-t border-border p-1">
-            <button
-              type="button"
-              onClick={() => pick(null)}
-              className="w-full cursor-pointer rounded-md px-2 py-1.5 text-left text-sm text-destructive hover:bg-destructive/5"
-            >
-              Clear
-            </button>
-          </div>
-        )}
       </PopoverContent>
     </Popover>
   );

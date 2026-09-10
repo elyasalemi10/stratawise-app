@@ -126,6 +126,7 @@ export async function autoMatchBankTransactions(
     const ok = await applyMatch(supabase, {
       txnId: t.id,
       txnAmount,
+      txnDate: t.transaction_date,
       allocated,
       levy: choice.levy,
       method: choice.method,
@@ -201,6 +202,7 @@ function pickLevyForLot(
 interface ApplyArgs {
   txnId: string;
   txnAmount: number;
+  txnDate: string;
   allocated: number;
   levy: OpenLevyRow;
   method: "auto_reference";
@@ -231,6 +233,39 @@ async function applyMatch(
     return false;
   }
 
+  // The payment itself. lot-balance.ts subtracts the `payments` table and
+  // nothing else, so a match that only moved amount_paid left the owner's
+  // balance at the full arrears with a levy notice next to it marked paid.
+  // The unique index on bank_transaction_id means a re-run cannot double it.
+  const { error: payErr } = await supabase.from("payments").insert({
+    oc_id: args.ocId,
+    lot_id: args.levy.lot_id,
+    levy_notice_id: args.levy.id,
+    amount: args.allocated,
+    payment_date: args.txnDate,
+    payment_method: "eft",
+    match_confidence: "exact_reference",
+    fund_type: args.levy.fund_type,
+    bank_transaction_id: args.txnId,
+    reference_number: args.levy.reference_number,
+    recorded_by: args.performedBy,
+  });
+  if (payErr) {
+    console.error("auto-match: payment insert failed", {
+      bank_transaction_id: args.txnId,
+      reason: payErr.message,
+    });
+    await supabase
+      .from("levy_notices")
+      .update({
+        amount_paid: Number(args.levy.amount_paid),
+        status: args.levy.status,
+        paid_at: null,
+      })
+      .eq("id", args.levy.id);
+    return false;
+  }
+
   const fullyMatched = args.allocated >= args.txnAmount;
   const matchNote = `Auto-matched to ${args.levy.reference_number} via ${
     args.method === "auto_reference" ? "DRN" : "owner reference"
@@ -249,8 +284,9 @@ async function applyMatch(
       bank_transaction_id: args.txnId,
       reason: txnErr.message,
     });
-    // Best-effort rollback of the levy_notice update so we don't leave a
-    // double-paid notice behind.
+    // Best-effort rollback of the payment and the levy_notice update so we
+    // don't leave a double-paid notice behind.
+    await supabase.from("payments").delete().eq("bank_transaction_id", args.txnId);
     await supabase
       .from("levy_notices")
       .update({
