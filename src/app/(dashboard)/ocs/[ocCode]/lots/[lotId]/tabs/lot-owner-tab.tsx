@@ -13,10 +13,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { EmptyState } from "@/components/shared/empty-state";
+import { EditSheet } from "@/components/shared/edit-sheet";
 import { AddressField } from "@/components/shared/address-field";
 import {
 } from "@/components/ui/select";
 import {
+  Hash,
   Repeat,
   ExternalLink,
   Mail,
@@ -102,6 +104,10 @@ interface Props {
   portalInviteAccepted: boolean;
   engagement: LotEngagement;
   onTransfer: () => void;
+  /** The lot's own fields. They had a tab to themselves and nothing else on
+   *  it, which made Overview a page you passed through. */
+  lotDetails: LotDetailsInput;
+  onLotDetailsSaved: () => void;
 }
 
 export function LotOwnerTab(props: Props) {
@@ -122,6 +128,8 @@ export function LotOwnerTab(props: Props) {
     portalInviteAccepted,
     engagement,
     onTransfer,
+    lotDetails,
+    onLotDetailsSaved,
   } = props;
 
   async function saveField(patch: {
@@ -269,6 +277,38 @@ export function LotOwnerTab(props: Props) {
               />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* The lot itself. Under the person, because the page is reached by
+          clicking a lot and the first question is who holds it; the
+          entitlement and liability are read when a levy or a vote is being
+          worked out, which is rarely and deliberately. */}
+      <Card>
+        <CardContent className="pt-5">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Hash className="h-4 w-4 text-[color:var(--brand-gold)]" />
+              <h3 className="text-sm font-semibold text-foreground">Lot details</h3>
+            </div>
+            <LotDetailsEditSheet lot={lotDetails} onSaved={onLotDetailsSaved} />
+          </div>
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+            <DetailField label="Lot number" value={String(lotDetails.lot_number)} mono />
+            <DetailField label="Unit number" value={lotDetails.unit_number || ""} mono />
+            <DetailField
+              label="Entitlement"
+              value={
+                lotDetails.lot_entitlement !== null ? String(lotDetails.lot_entitlement) : ""
+              }
+            />
+            <DetailField
+              label="Liability"
+              value={
+                lotDetails.lot_liability !== null ? String(lotDetails.lot_liability) : ""
+              }
+            />
+          </dl>
         </CardContent>
       </Card>
 
@@ -556,5 +596,121 @@ function OwnerReadonly({ label, value, mono }: { label: string; value: string; m
         {value}
       </div>
     </div>
+  );
+}
+
+interface LotDetailsInput {
+  id: string;
+  lot_number: number;
+  unit_number: string | null;
+  lot_entitlement: number | null;
+  lot_liability: number | null;
+}
+
+function DetailField({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div>
+      <dt className="text-xs tracking-normal text-muted-foreground">
+        {label}
+      </dt>
+      <dd
+        className={`mt-0.5 text-sm font-semibold text-foreground tabular-nums ${
+          mono ? "font-mono" : ""
+        }`}
+      >
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+// Single edit drawer for unit number / entitlement / liability. Lot number
+// itself stays locked because it's referenced by every levy notice issued
+// for the lot.
+function LotDetailsEditSheet({
+  lot,
+  onSaved,
+}: {
+  lot: LotDetailsInput;
+  onSaved: () => void;
+}) {
+  const [unit, setUnit] = React.useState(lot.unit_number ?? "");
+  const [entitlement, setEntitlement] = React.useState(
+    lot.lot_entitlement !== null ? String(lot.lot_entitlement) : "",
+  );
+  const [liability, setLiability] = React.useState(
+    lot.lot_liability !== null ? String(lot.lot_liability) : "",
+  );
+
+  return (
+    <EditSheet
+      label="Lot details"
+      description="Unit number, entitlement, and liability. Lot number itself stays locked."
+      triggerLabel="Edit"
+      triggerVariant="secondary"
+      requireConfirmation
+      confirmationMessage="These values drive levy calculations and voting rights. Save anyway?"
+      onOpenChange={(open) => {
+        if (open) {
+          setUnit(lot.unit_number ?? "");
+          setEntitlement(lot.lot_entitlement !== null ? String(lot.lot_entitlement) : "");
+          setLiability(lot.lot_liability !== null ? String(lot.lot_liability) : "");
+        }
+      }}
+      onSave={async () => {
+        const entitlementNum = entitlement.trim() ? parseFloat(entitlement) : null;
+        const liabilityNum = liability.trim() ? parseFloat(liability) : null;
+        if (entitlementNum !== null && !Number.isFinite(entitlementNum)) {
+          return { ok: false as const, error: "Entitlement must be a number." };
+        }
+        if (liabilityNum !== null && !Number.isFinite(liabilityNum)) {
+          return { ok: false as const, error: "Liability must be a number." };
+        }
+        const { updateLotDetails } = await import("@/lib/actions/lot-edit");
+        const res = await updateLotDetails({
+          lot_id: lot.id,
+          unit_number: unit.trim() || null,
+          lot_entitlement: entitlementNum,
+          lot_liability: liabilityNum,
+        });
+        if (res.ok) onSaved();
+        return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
+      }}
+    >
+      <div className="space-y-1.5">
+        <Label>Unit number</Label>
+        <Input
+          value={unit}
+          onChange={(e) => setUnit(e.target.value)}
+          placeholder="Unit number"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Lot entitlement</Label>
+        <Input
+          value={entitlement}
+          onChange={(e) => setEntitlement(e.target.value)}
+          placeholder="Lot entitlement"
+          inputMode="decimal"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label>Lot liability</Label>
+        <Input
+          value={liability}
+          onChange={(e) => setLiability(e.target.value)}
+          placeholder="Lot liability"
+          inputMode="decimal"
+        />
+      </div>
+    </EditSheet>
   );
 }

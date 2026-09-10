@@ -323,7 +323,7 @@ export function CreateBudgetForm({
         <Card>
           <CardContent className="pt-5">
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab((v as FundKey) ?? selectedKeys[0])}>
-              <TabsList variant="line" className="border-b border-border">
+              <TabsList variant="line">
                 {selectedKeys.map((key) => (
                   <TabsTrigger key={key} value={key}>
                     {labelFor(key)}

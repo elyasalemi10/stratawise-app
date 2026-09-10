@@ -34,8 +34,12 @@ const tabsListVariants = cva(
         // floated: nothing said where the strip ended and the page began,
         // and the gold underline read as a stray mark rather than as the
         // lit segment of a bar.
-        line:
-          "relative gap-1 bg-transparent after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-primary",
+        //
+        // A real border, not a pseudo-element. Callers style these strips
+        // heavily and a rule made of `after:` is invisible to anyone reading
+        // the call site, so the first person to add `p-0` or a wrapper with
+        // `overflow-hidden` removes it without knowing they have.
+        line: "relative gap-1 border-b-2 border-primary bg-transparent",
       },
     },
     defaultVariants: {

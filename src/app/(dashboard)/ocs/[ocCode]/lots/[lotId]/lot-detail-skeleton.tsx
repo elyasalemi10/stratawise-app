@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 // captions. Those are fixed strings, not server values, and shimmering them
 // would be pretending we do not know our own page.
 
-const TABS = ["Overview", "Owner", "Levies", "Communications", "Documents"];
+const TABS = ["Owner", "Levies", "Communications", "Documents"];
 
 export function LotDetailSkeleton() {
   return (
@@ -51,7 +51,7 @@ export function LotDetailSkeleton() {
 
       {/* Tab strip, rendered for real. The labels never depend on the lot,
           and neither does the navy rule they sit on. */}
-      <div className="relative flex w-full flex-wrap items-center gap-0 after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-primary">
+      <div className="relative flex w-full flex-wrap items-center gap-0 border-b-2 border-primary">
         {TABS.map((label, i) => (
           <span
             key={label}
@@ -67,9 +67,34 @@ export function LotDetailSkeleton() {
         ))}
       </div>
 
-      {/* Overview body: the lot's own fields. The heading and all four
-          field labels are ours, so they render. */}
+      {/* Owner body: the person, then the lot's own fields. Their contact
+          labels and the four lot field labels are ours, so they render. */}
       <div className="space-y-6">
+        <Card>
+          <CardContent className="space-y-4 pt-5">
+            <div className="flex items-start gap-3">
+              <Skeleton className="size-11 shrink-0 rounded-full" />
+              <div className="flex-1 space-y-1.5">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-56" />
+              </div>
+              <Skeleton className="h-5 w-20 rounded-full" />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {["Full name", "Email", "Phone", "Payment reference"].map((label) => (
+                <div key={label} className="space-y-1.5">
+                  <p className="text-sm font-medium text-foreground">{label}</p>
+                  <Skeleton className="h-9 w-full rounded-md" />
+                </div>
+              ))}
+              <div className="space-y-1.5 sm:col-span-2">
+                <p className="text-sm font-medium text-foreground">Service address</p>
+                <Skeleton className="h-9 w-full rounded-md" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardContent className="pt-5">
             <div className="mb-3 flex items-center gap-2">

@@ -24,7 +24,6 @@ import { DocumentManager } from "@/components/shared/document-manager";
 import { SettlementDialog } from "./settlement-dialog";
 import { InviteDialog } from "../../manage/invite-dialog";
 import { InviteStatusPopover } from "../invite-status-popover";
-import { LotOverviewTab } from "./tabs/lot-overview-tab";
 import { LotOwnerTab } from "./tabs/lot-owner-tab";
 import { LotCommunicationsTab } from "./tabs/lot-communications-tab";
 import type { LotCommunicationRow } from "@/lib/actions/lot-communications";
@@ -57,7 +56,6 @@ interface LotDetailContentProps {
   /** Real invitation state, from the same query the lots table reads. */
   inviteStatus: "not_invited" | "pending" | "accepted";
   lotOwnerExtra: LotOwnerExtra | null;
-  lastPaymentAt: string | null;
   lotAddress: string | null;
   activity: LotActivityEntry[];
   portalActivity: PortalActivity;
@@ -70,7 +68,6 @@ interface LotDetailContentProps {
 }
 
 const TABS = [
-  { value: "overview", label: "Overview" },
   { value: "owner", label: "Owner" },
   { value: "levies", label: "Levies" },
   { value: "communications", label: "Communications" },
@@ -82,20 +79,6 @@ type TabValue = typeof TABS[number]["value"];
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(Math.abs(n));
 
-function formatRelative(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const then = new Date(iso).getTime();
-  const now = Date.now();
-  const diff = now - then;
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  if (days === 0) return "today";
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days} days ago`;
-  if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
-  if (days < 365) return `${Math.floor(days / 30)} months ago`;
-  return `${Math.floor(days / 365)} years ago`;
-}
-
 export function LotDetailContent({
   lot: initialLot,
   owner,
@@ -105,7 +88,6 @@ export function LotDetailContent({
   ownershipHistory,
   inviteStatus,
   lotOwnerExtra,
-  lastPaymentAt,
   lotAddress,
   activity,
   portalActivity,
@@ -127,12 +109,14 @@ export function LotDetailContent({
     invalidateCached("lots:");
   }, []);
 
-  const rawTab = searchParams.get("tab") ?? "overview";
-  // Migrate legacy URLs. "general" was Overview's old name, "payments" the
-  // Levies tab's, and "history" is now the bottom half of Overview.
+  const rawTab = searchParams.get("tab") ?? "owner";
+  // Migrate legacy URLs. Overview is gone (its one remaining card is on the
+  // Owner tab), "general" was its older name, "payments" was the Levies
+  // tab's, and "history" is now the bottom half of Communications.
   const LEGACY_TABS: Record<string, TabValue> = {
-    general: "overview",
-    history: "overview",
+    general: "owner",
+    overview: "owner",
+    history: "communications",
     payments: "levies",
   };
   const normalisedTab = LEGACY_TABS[rawTab] ?? rawTab;
@@ -195,7 +179,6 @@ export function LotDetailContent({
   const pastHistoryEntries = ownershipHistory.filter((h) => !!h.leftAt);
 
   const portalActive = !!owner.profile_id;
-  const lastPaymentRelative = formatRelative(lastPaymentAt);
 
   // "Lot 2 · Unit 2 - Owner name", with each piece dropping off when there
   // is nothing to put in it.
@@ -265,10 +248,9 @@ export function LotDetailContent({
 
           <div className="border-t border-border" />
 
-          {/* The three money questions, answered before any tab is opened:
-              what they owe, when they last paid, what is coming. Set larger
-              than a label/value line so they read as the page's headline
-              figures rather than as form fields. */}
+          {/* One number: what this lot owes right now. Everything else that
+              was here (when they last paid, what is next) is a detail of the
+              ledger, and the ledger is a tab away with all of it in order. */}
           <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2 text-base">
             <div className="inline-flex items-baseline gap-2">
               <span className="text-muted-foreground">
@@ -290,17 +272,6 @@ export function LotDetailContent({
                 <span className="text-sm text-muted-foreground">All settled</span>
               )}
             </div>
-            {/* Only when there has been one. "No payments yet" was a whole
-                headline figure spent saying nothing, next to a balance that
-                already says the lot owes everything it has been charged. */}
-            {lastPaymentRelative && (
-              <div className="inline-flex items-baseline gap-2">
-                <span className="text-muted-foreground">Last payment:</span>
-                <span className="text-lg font-semibold text-foreground">
-                  {lastPaymentRelative}
-                </span>
-              </div>
-            )}
           </div>
       </div>
 
@@ -310,7 +281,7 @@ export function LotDetailContent({
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList
           variant="line"
-          className="h-auto w-full flex-wrap justify-start gap-0 border-0 bg-transparent p-0"
+          className="h-auto w-full flex-wrap justify-start gap-0 bg-transparent p-0"
         >
           {TABS.map((tab) => (
             <TabsTrigger
@@ -326,19 +297,6 @@ export function LotDetailContent({
 
       {/* Tab content. Render all tabs once with `hidden` on the inactive
           ones so per-tab state (ledger filters, etc.) survives switching. */}
-      <div className={activeTab === "overview" ? "" : "hidden"}>
-        <LotOverviewTab
-          lotDetails={{
-            id: lot.id,
-            lot_number: Number(lot.lot_number),
-            unit_number: lot.unit_number ?? null,
-            lot_entitlement: lot.lot_entitlement ?? null,
-            lot_liability: lot.lot_liability ?? null,
-          }}
-          onLotDetailsSaved={() => refreshLot()}
-        />
-      </div>
-
       <div className={activeTab === "owner" ? "" : "hidden"}>
         <LotOwnerTab
           lotOwnerId={lotOwnerExtra?.lot_owner_id ?? null}
@@ -364,6 +322,14 @@ export function LotDetailContent({
           }}
           engagement={engagement}
           onTransfer={() => setSettlementOpen(true)}
+          lotDetails={{
+            id: lot.id,
+            lot_number: Number(lot.lot_number),
+            unit_number: lot.unit_number ?? null,
+            lot_entitlement: lot.lot_entitlement ?? null,
+            lot_liability: lot.lot_liability ?? null,
+          }}
+          onLotDetailsSaved={() => refreshLot()}
         />
       </div>
 
