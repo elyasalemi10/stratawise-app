@@ -490,6 +490,7 @@ function AddPolicyDrawer({
   const [certificateInvalid, setCertificateInvalid] = useState(false);
   const [policyNumberInvalid, setPolicyNumberInvalid] = useState(false);
   const [sumInsuredInvalid, setSumInsuredInvalid] = useState(false);
+  const [premiumInvalid, setPremiumInvalid] = useState(false);
 
   function reset() {
     setStep("coc");
@@ -605,6 +606,12 @@ function AddPolicyDrawer({
     if (!sumInsured.trim() || !(Number(sumInsured) > 0)) {
       problems.push("Sum insured is required.");
     }
+    // What it costs, per the period named on the label. The budget line for
+    // insurance is built from this, and a policy recorded without it turns
+    // into a line the manager has to go and look up again at budget time.
+    if (!premium.trim() || !(Number(premium) > 0)) {
+      problems.push("Premium is required.");
+    }
     if (!startDate) problems.push("Start date is required.");
     if (!endDate) problems.push("End date is required.");
     if (policyType === "other" && !policyTypeCustom.trim()) {
@@ -624,6 +631,7 @@ function AddPolicyDrawer({
     setProviderInvalid(!provider.trim());
     setPolicyNumberInvalid(!policyNumber.trim());
     setSumInsuredInvalid(!sumInsured.trim() || !(Number(sumInsured) > 0));
+    setPremiumInvalid(!premium.trim() || !(Number(premium) > 0));
     setStartInvalid(!startDate || (!!endDate && endDate <= startDate));
     setEndInvalid(!endDate || (!!startDate && endDate <= startDate));
     setCustomTypeInvalid(policyType === "other" && !policyTypeCustom.trim());
@@ -638,7 +646,7 @@ function AddPolicyDrawer({
       provider,
       policy_number: policyNumber.trim(),
       sum_insured: Number(sumInsured),
-      premium: premium ? Number(premium) : undefined,
+      premium: Number(premium),
       payment_frequency: paymentFrequency,
       start_date: startDate,
       end_date: endDate,
@@ -926,9 +934,18 @@ function AddPolicyDrawer({
                       ? "Premium every six months"
                       : paymentFrequency === "quarterly"
                         ? "Premium a quarter"
-                        : "Premium a month"}
+                        : "Premium a month"}{" "}
+                  <span className="text-destructive">*</span>
                 </Label>
-                <AmountInput value={premium} onChange={setPremium} placeholder="Premium" />
+                <AmountInput
+                  value={premium}
+                  onChange={(v) => {
+                    setPremium(v);
+                    setPremiumInvalid(false);
+                  }}
+                  placeholder="Premium"
+                  invalid={premiumInvalid}
+                />
               </div>
             </div>
           )}

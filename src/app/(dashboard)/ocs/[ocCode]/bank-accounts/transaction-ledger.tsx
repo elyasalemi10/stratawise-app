@@ -46,6 +46,13 @@ const currency = new Intl.NumberFormat("en-AU", {
   style: "currency",
   currency: "AUD",
 });
+
+/** Signed, always. Colour carries the direction and a sign says it again in
+ *  a way that survives a bad monitor, a screenshot and colour blindness.
+ *  Intl already prints the minus; the plus is ours. */
+function signedAmount(n: number): string {
+  return n > 0 ? `+${currency.format(n)}` : currency.format(n);
+}
 const dayFmt = new Intl.DateTimeFormat("en-AU", {
   day: "2-digit",
   month: "short",
@@ -190,16 +197,14 @@ function LedgerRow({
           // and nothing else competing for it.
           "text-right text-sm font-bold tabular-nums",
           inactive && "line-through opacity-55",
-          // text-success, the token utility. --success-foreground is a
-          // 20%-lightness green meant for text on a tinted badge and read as
-          // black at this weight; an arbitrary text-[color:var(--success)]
-          // then failed to beat the cell's own colour on some rows. The
-          // named utility is in the same conflict group as text-destructive,
-          // so the merge resolves it either way.
+          // text-success is #0C8D64. --success-foreground, which this
+          // started as, is a 20%-lightness green meant for text on a tinted
+          // badge and reads as near-black at this weight, which is what
+          // "navy" was.
           amount !== null && amount < 0 ? "text-destructive" : "text-success",
         )}
       >
-        {amount !== null ? currency.format(amount) : ""}
+        {amount !== null ? signedAmount(amount) : ""}
       </TableCell>
     </TableRow>
   );

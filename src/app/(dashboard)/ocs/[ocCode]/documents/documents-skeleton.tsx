@@ -3,6 +3,7 @@
 import { Search, Upload } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
+  DOCUMENT_DROP_TILE,
   DOCUMENT_GRID,
   DocumentCardSkeleton,
 } from "@/components/shared/document-card-skeleton";
@@ -35,7 +36,7 @@ export function DocumentsSkeleton() {
       </div>
 
       <div className={DOCUMENT_GRID}>
-        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card p-4 text-center">
+        <div className={DOCUMENT_DROP_TILE}>
           <Upload className="h-7 w-7 text-muted-foreground" />
           <span className="text-sm font-medium text-foreground">Add a document</span>
           <span className="text-xs text-muted-foreground">Drop it here, or click to choose</span>

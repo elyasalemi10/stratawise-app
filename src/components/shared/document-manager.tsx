@@ -7,6 +7,7 @@ import { DocumentCard, DocumentUploadCard } from "@/components/shared/document-c
 import { captureVideoPoster } from "@/lib/video-poster";
 import { searchDocumentContents } from "@/lib/actions/document-search";
 import {
+  DOCUMENT_DROP_TILE,
   DOCUMENT_GRID,
   DocumentCardSkeleton,
 } from "@/components/shared/document-card-skeleton";
@@ -788,9 +789,7 @@ export function DocumentManager({ ocId, lotId, initialDocuments, readOnly }: Doc
                 e.preventDefault();
                 if (e.dataTransfer.files?.length) handleFiles(e.dataTransfer.files);
               }}
-              // No height of its own: it stretches with the row like every
-              // card does, so it never leaves a gap under itself.
-              className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-card p-4 text-center transition-colors hover:border-primary/50 hover:bg-muted"
+              className={cn(DOCUMENT_DROP_TILE, "hover:border-primary/50 hover:bg-muted")}
             >
               <Upload className="h-7 w-7 text-muted-foreground" />
               <span className="text-sm font-medium text-foreground">Add a document</span>

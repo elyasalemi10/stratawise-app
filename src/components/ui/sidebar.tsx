@@ -510,6 +510,21 @@ function SidebarMenuButton({
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const { isMobile, state } = useSidebar()
+
+  // A tooltip only exists when the rail is collapsed to icons. It used to be
+  // mounted on every row regardless and simply told to stay hidden, which
+  // cost a Base UI Tooltip per sidebar item on every page, and each of those
+  // calls useId to wire aria-describedby. Those ids are derived from the
+  // position in the React tree, so any difference between the server render
+  // and the client one shows up as a hydration mismatch on every row at
+  // once, which is exactly what it was doing.
+  //
+  // `state` comes from a cookie read on the server and handed to the
+  // provider, and isMobile is false on both first renders, so this condition
+  // agrees across hydration. Collapsing the rail afterwards mounts the
+  // tooltips client-side, where there is nothing to mismatch against.
+  const wantsTooltip = Boolean(tooltip) && state === "collapsed" && !isMobile
+
   const comp = useRender({
     defaultTagName: "button",
     props: mergeProps<"button">(
@@ -518,7 +533,7 @@ function SidebarMenuButton({
       },
       props
     ),
-    render: !tooltip ? render : <TooltipTrigger render={render} />,
+    render: !wantsTooltip ? render : <TooltipTrigger render={render} />,
     state: {
       slot: "sidebar-menu-button",
       sidebar: "menu-button",
@@ -527,7 +542,7 @@ function SidebarMenuButton({
     },
   })
 
-  if (!tooltip) {
+  if (!wantsTooltip) {
     return comp
   }
 
@@ -540,12 +555,7 @@ function SidebarMenuButton({
   return (
     <Tooltip>
       {comp}
-      <TooltipContent
-        side="right"
-        align="center"
-        hidden={state !== "collapsed" || isMobile}
-        {...tooltip}
-      />
+      <TooltipContent side="right" align="center" {...tooltip} />
     </Tooltip>
   )
 }

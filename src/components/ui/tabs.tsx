@@ -29,16 +29,19 @@ const tabsListVariants = cva(
     variants: {
       variant: {
         default: "bg-muted",
-        // A rule the full width of the strip, with the active tab's gold
-        // marker sitting ON it rather than floating below it.
+        // No rule under the strip. Just the gold bar under whichever tab is
+        // open, sitting flush against the bottom of the tab rather than the
+        // base's five pixels clear of it.
         //
-        // The marker is the primitive's own `after:` bar, and the base puts
-        // it at bottom-[-5px], five pixels clear of the tab. That gap is why
-        // the two lines never lined up: the strip's rule is at the strip's
-        // bottom edge and the gold bar was somewhere under it. The line
-        // variant pulls the bar back onto the rule (see TabsTrigger) and
-        // paints it gold.
-        line: "gap-0 rounded-none border-b border-border bg-transparent p-0",
+        // The colour arrives as a custom property, not as a class. The base
+        // trigger paints the marker with `after:bg-foreground`, which is
+        // midnight, and a class trying to override it from a different
+        // variant prefix is a different tailwind-merge key: both survive the
+        // merge, Tailwind wraps variants in :where() so neither wins on
+        // specificity, and source order decides. That is why the marker kept
+        // coming out navy. A variable is inherited, so there is nothing to
+        // win.
+        line: "gap-0 rounded-none bg-transparent p-0 [--tab-marker:var(--brand-gold)]",
       },
     },
     defaultVariants: {
@@ -70,15 +73,12 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
         "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-all group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-sm group-data-[variant=line]/tabs-list:data-active:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent dark:group-data-[variant=line]/tabs-list:data-active:border-transparent dark:group-data-[variant=line]/tabs-list:data-active:bg-transparent",
         "data-active:bg-background data-active:text-foreground dark:data-active:border-input dark:data-active:bg-input/30 dark:data-active:text-foreground",
-        "after:absolute after:bg-foreground after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
-        // Line variant: sit the marker ON the strip's rule instead of five
-        // pixels below it, make it gold, and give an inactive tab a grey
-        // preview of it on hover so the strip reads as a row of switches.
+        "after:absolute after:bg-[color:var(--tab-marker,var(--foreground))] after:opacity-0 after:transition-opacity group-data-horizontal/tabs:after:inset-x-0 group-data-horizontal/tabs:after:bottom-[-5px] group-data-horizontal/tabs:after:h-0.5 group-data-vertical/tabs:after:inset-y-0 group-data-vertical/tabs:after:-right-1 group-data-vertical/tabs:after:w-0.5 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
+        // Line variant: the marker sits flush under the tab rather than the
+        // base's five pixels clear of it. Its colour comes from --tab-marker,
+        // set on the list.
         "group-data-[variant=line]/tabs-list:border-0",
-        "group-data-[variant=line]/tabs-list:group-data-horizontal/tabs:after:-bottom-[1px]",
-        "group-data-[variant=line]/tabs-list:data-active:after:bg-[color:var(--brand-gold)]",
-        "group-data-[variant=line]/tabs-list:not-data-active:hover:after:bg-muted-foreground/30",
-        "group-data-[variant=line]/tabs-list:not-data-active:hover:after:opacity-100",
+        "group-data-[variant=line]/tabs-list:group-data-horizontal/tabs:after:bottom-0",
         className
       )}
       {...props}

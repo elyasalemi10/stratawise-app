@@ -28,19 +28,24 @@ import type { DocumentTag, TagColour } from "@/lib/document-tags-shared";
 // still on the row as original_filename. What replaces it is the manager's
 // note and their tags, which are the things that make a document findable.
 
-/** 4:3, on every branch, never overridden per branch.
+/** 4:3, on every branch, and nothing inside it may affect its height.
  *
- *  Square was the wrong box and everything after it was a fight with the
- *  consequences: squaring the CARD squeezed the picture, and squaring the
- *  preview left the card a tall rectangle. A landscape tile is the shape a
- *  page cropped to its top actually wants.
+ *  `aspect-ratio` sets the height from the width, but only when nothing else
+ *  wins first, and inside a flex column two things do. A flex item's
+ *  automatic minimum size is its CONTENT size, so a portrait photo made the
+ *  box as tall as the photo. And an element whose contents are in normal
+ *  flow still has an intrinsic height for the ratio to lose to, which is why
+ *  the same box came out barely taller than an icon when there was no image.
+ *
+ *  So: `min-h-0` removes the automatic minimum, and everything inside is
+ *  positioned absolutely, which takes it out of flow entirely. The box's
+ *  height then has exactly one source. That is why the branches all look the
+ *  same now and did not before, whatever they contain.
  *
  *  The card itself has no height. It is a flex column of strip, preview and
  *  footer, and the footer carries flex-1 so it absorbs whatever slack the
- *  grid gives it: rows stretch to their tallest card, so a card next to an
- *  expanded note still puts its tag row flush at the bottom. Do not set a
- *  height on the card to "fix" the alignment; it is already handled. */
-const PREVIEW_SHAPE = "aspect-[4/3]";
+ *  grid gives it. Do not set a height on the card to "fix" the alignment. */
+const PREVIEW_SHAPE = "relative block aspect-[4/3] w-full min-h-0 shrink-0 overflow-hidden";
 
 export interface DocumentCardDoc {
   id: string;
@@ -174,10 +179,7 @@ function DocumentCardInner({
       <button
         type="button"
         onClick={() => (selectionActive && !readOnly ? onToggleSelect(doc.id) : onOpen(doc.id))}
-        className={cn(
-          PREVIEW_SHAPE,
-          "relative flex w-full shrink-0 cursor-pointer items-center justify-center overflow-hidden bg-muted/40",
-        )}
+        className={cn(PREVIEW_SHAPE, "cursor-pointer bg-muted/40")}
         aria-label={
           selectionActive && !readOnly
             ? `${selected ? "Deselect" : "Select"} ${doc.file_name}`
@@ -196,9 +198,10 @@ function DocumentCardInner({
               onLoad={() => setPreviewReady(true)}
               onError={() => setPreviewReady(true)}
               className={cn(
-                // object-top, not the default centre. The interesting part
+                // Absolute, so the image cannot set the box's height. And
+                // object-top, not the default centre: the interesting part
                 // of a document is its top, and centring the crop cut it off.
-                "h-full w-full object-cover object-top transition-opacity duration-200",
+                "absolute inset-0 h-full w-full object-cover object-top transition-opacity duration-200",
                 previewReady ? "opacity-100" : "opacity-0",
               )}
             />
@@ -214,7 +217,7 @@ function DocumentCardInner({
           // and it told the manager nothing they could act on. And no
           // promises either: this used to say "Getting this one ready" while
           // a conversion was pending, which is hope, not information.
-          <div className="flex h-full w-full flex-col items-center justify-center gap-2">
+          <span className="absolute inset-0 flex flex-col items-center justify-center gap-2">
             <FileTypeIllustration
               kind={fileKindFor(doc.mime_type, doc.file_name)}
               className="size-10"
@@ -224,7 +227,7 @@ function DocumentCardInner({
                 {typeLabel}
               </span>
             )}
-          </div>
+          </span>
         )}
       </button>
 
@@ -273,7 +276,8 @@ export function DocumentUploadCard({
       <div className="flex shrink-0 items-center justify-end px-2 pt-2">
         <span className="text-[11px] font-medium text-muted-foreground">Just now</span>
       </div>
-      <div className={cn(PREVIEW_SHAPE, "flex flex-col items-center justify-center gap-2 bg-muted/40 px-4 text-center")}>
+      <div className={cn(PREVIEW_SHAPE, "bg-muted/40")}>
+        <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
         {failed ? (
           <>
             <span className="text-sm font-medium text-destructive">Upload failed</span>
@@ -285,6 +289,7 @@ export function DocumentUploadCard({
           // description of an upload in flight.
           <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
         )}
+        </span>
       </div>
       {/* The footer a finished card has, with both controls drawn as they
           will look and dimmed, because they are not usable yet. Two empty
