@@ -138,7 +138,6 @@ export function BatchDetailContent({
     setRegenerating(false);
     if (result.success) {
       toast.success("Batch regenerated with new due date");
-      setShowRegenerate(false);
       setShowRegenConfirm(false);
       refetchCached("batch:");
     }
@@ -515,7 +514,7 @@ export function BatchDetailContent({
           <DialogFooter>
             <Button variant="secondary" onClick={() => setShowRegenerate(false)}>Cancel</Button>
             <Button
-              onClick={() => setShowRegenConfirm(true)}
+              onClick={() => { setShowRegenerate(false); setShowRegenConfirm(true); }}
               disabled={!regenDate}
             >
               Continue
@@ -542,9 +541,9 @@ export function BatchDetailContent({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               onClick={handleRegenerate}
               disabled={regenerating}
-              className="bg-destructive text-white hover:bg-destructive/90"
             >
               {regenerating && <Loader2 className="size-4 animate-spin" />}
               Regenerate
@@ -568,9 +567,9 @@ export function BatchDetailContent({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               onClick={handleRecall}
               disabled={recalling}
-              className="bg-destructive text-white hover:bg-destructive/90"
             >
               {recalling && <Loader2 className="size-4 animate-spin" />}
               Recall
@@ -594,9 +593,9 @@ export function BatchDetailContent({
           <AlertDialogFooter>
             <AlertDialogCancel>Keep batch</AlertDialogCancel>
             <AlertDialogAction
+              variant="destructive"
               onClick={handleCancel}
               disabled={cancelling}
-              className="bg-destructive text-white hover:bg-destructive/90"
             >
               {cancelling && <Loader2 className="size-4 animate-spin" />}
               Cancel batch
