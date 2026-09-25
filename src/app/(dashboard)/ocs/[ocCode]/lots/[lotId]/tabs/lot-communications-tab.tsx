@@ -58,6 +58,7 @@ import {
 } from "@/lib/actions/lot-communications";
 import type { LotActivityEntry } from "@/lib/actions/lot-overview";
 import { LotActivityLog } from "./lot-activity-log";
+import { formatDateShort, formatDateTimeShort } from "@/lib/format-date";
 import {
   getManagerSendAddress,
   getSmsSenderId,
@@ -381,24 +382,14 @@ function CommunicationRow({
 }
 
 function formatShortDate(iso: string): string {
-  return new Date(iso).toLocaleString("en-AU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeShort(new Date(iso));
 }
 
 // Date-only formatter for call_date (when the call happened) , the manager
 // only ever picks a date in the form, never a time of day, so showing
 // "13:00" in the detail dialog is misleading.
 function formatDateOnly(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDateShort(new Date(iso));
 }
 
 // ─── Detail dialog ─────────────────────────────────────────────────────────

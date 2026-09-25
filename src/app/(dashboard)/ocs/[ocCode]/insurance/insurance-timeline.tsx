@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { formatDateLong, cn } from "@/lib/utils";
 import { uploadAndParseInsuranceCoc, uploadInsuranceDocument, attachDocumentToPolicy } from "./parse-coc";
+import { formatMonthYear2Digit } from "@/lib/format-date";
 import {
   PAYMENT_FREQUENCY_LABEL,
   PAYMENT_FREQUENCY_OPTIONS,
@@ -1066,7 +1067,7 @@ function InsuranceGantt({
   while (tickWalker.getTime() <= maxMs) {
     ticks.push({
       iso: tickWalker.toISOString().slice(0, 10),
-      label: tickWalker.toLocaleDateString("en-AU", { month: "short", year: "2-digit" }),
+      label: formatMonthYear2Digit(tickWalker),
     });
     tickWalker.setMonth(tickWalker.getMonth() + 3);
   }

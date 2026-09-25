@@ -13,6 +13,7 @@ import {
 import { resolveCompanyLogo } from "@/lib/notifications";
 import { MEETING_TYPE_LABELS, type MeetingType } from "@/lib/validations/meetings";
 
+import { formatDateTimeWithWeekdayShort, formatDateWithWeekdayShort } from "@/lib/format-date";
 export type BulkEmailPayload =
   | { kind: "meeting_notice"; meetingId: string; notifyScope: string; lotOwnerIds: string[] }
   | { kind: "recurring_job"; recurringJobId: string; occurrenceDate: string };
@@ -52,15 +53,10 @@ async function resolveOwners(
 }
 
 function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString("en-AU", {
-    weekday: "short", day: "numeric", month: "short", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-  });
+  return formatDateTimeWithWeekdayShort(new Date(iso));
 }
 function formatDate(iso: string): string {
-  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-AU", {
-    weekday: "short", day: "numeric", month: "short", year: "numeric",
-  });
+  return formatDateWithWeekdayShort(new Date(`${iso.slice(0, 10)}T00:00:00`));
 }
 
 async function logComm(

@@ -40,6 +40,7 @@ import type { MeetingNoticeProps } from "@/lib/pdf/types";
 import { after } from "next/server";
 import { enqueueJob, drainJobs } from "@/lib/jobs/queue";
 
+import { formatDateTimeWithWeekdayLong, formatDateWithWeekdayLong, formatTimeOfDay } from "@/lib/format-date";
 // Builds the branded meeting-notice PDF props for an OC + parsed wizard input.
 // Private helper shared by the create + preview actions.
 async function buildMeetingNoticeProps(
@@ -72,9 +73,9 @@ async function buildMeetingNoticeProps(
   const ocAddress = [oc?.address, oc?.suburb, oc?.state, oc?.postcode].filter(Boolean).join(", ");
   const brand = mc?.brand_color || "#0E314C";
   const when = new Date(d.date_time);
-  const whenLabel = when.toLocaleString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" });
-  const dateLabel = when.toLocaleDateString("en-AU", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  const timeLabel = when.toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" });
+  const whenLabel = formatDateTimeWithWeekdayLong(when);
+  const dateLabel = formatDateWithWeekdayLong(when);
+  const timeLabel = formatTimeOfDay(when);
   const agenda = (d.agenda ?? []).filter((a) => a.title.trim().length > 0);
   const typeLabel = MEETING_TYPE_LABELS[d.meeting_type as MeetingType];
   const isOnline = d.meeting_format === "online";
@@ -117,10 +118,7 @@ async function buildMeetingNoticeProps(
     })),
     chairperson: d.chairperson?.trim() || null,
     proxyCutoffLabel: d.proxy_cutoff_at
-      ? new Date(d.proxy_cutoff_at).toLocaleString("en-AU", {
-          weekday: "long", day: "numeric", month: "long", year: "numeric",
-          hour: "numeric", minute: "2-digit",
-        })
+      ? formatDateTimeWithWeekdayLong(new Date(d.proxy_cutoff_at))
       : null,
     proxyReturnTo: d.proxy_return_to?.trim() || null,
     accompanyingDocuments: (d.accompanying_documents ?? "")

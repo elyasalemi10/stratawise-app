@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { listLotLevies, type LotLevyRow } from "@/lib/actions/lot-levies";
 import { EmptyState } from "@/components/shared/empty-state";
 
+import { formatDateShort } from "@/lib/format-date";
 // Levies tab , every levy notice ever issued to this lot, paid or unpaid.
 // One row per notice, and deliberately no status column.
 //
@@ -41,11 +42,7 @@ function fmtCurrency(n: number) {
 
 function fmtDate(iso: string | null): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDateShort(new Date(iso));
 }
 
 export function LotLeviesTab({ lotId }: Props) {

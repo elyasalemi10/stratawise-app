@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase";
 import { advance, computeNextOccurrence } from "@/lib/recurring-jobs-helpers";
 import type { RecurringFrequency } from "@/lib/validations/recurring-jobs";
 
+import { formatDateWithWeekdayShort } from "@/lib/format-date";
 // Drops an in-app notification for every lot-owner member of an OC. Inlined
 // here (rather than importing the "use server" notifications action) so the
 // Trigger.dev build stays free of Next server-action plumbing.
@@ -36,9 +37,7 @@ async function notifyOcOwnersInApp(
 // next_occurrence_date so the same occurrence isn't re-notified.
 
 function humanDate(iso: string): string {
-  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-AU", {
-    weekday: "short", day: "numeric", month: "short", year: "numeric",
-  });
+  return formatDateWithWeekdayShort(new Date(`${iso.slice(0, 10)}T00:00:00`));
 }
 
 //

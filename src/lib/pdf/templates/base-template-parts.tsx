@@ -4,20 +4,13 @@ import { View, Text, Image } from "@react-pdf/renderer";
 import { baseStyles } from "../styles";
 import type { ManagementCompany, OC } from "../types";
 
+import { formatDateLong, formatTimeOfDayPadded } from "@/lib/format-date";
 function formatDate(date: Date): string {
-  return date.toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  return formatDateLong(date);
 }
 
 function formatTime(date: Date): string {
-  return date.toLocaleTimeString("en-AU", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+  return formatTimeOfDayPadded(date);
 }
 
 /**

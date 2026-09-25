@@ -2,6 +2,7 @@ import { Page, View, Text, Image, Document } from "@react-pdf/renderer";
 import { StyleSheet } from "@react-pdf/renderer";
 import "../fonts";
 
+import { formatDateLong } from "@/lib/format-date";
 const c = {
   foreground: "#1a1f2e",
   muted: "#6b7280",
@@ -61,7 +62,7 @@ function fmt(n: number): string {
 function fmtDate(date: string): string {
   if (!date) return "";
   const d = date.includes("T") ? new Date(date) : new Date(date + "T00:00:00");
-  return d.toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+  return formatDateLong(d);
 }
 
 // ─── Types ─────────────────────────────────────────────────
@@ -217,7 +218,11 @@ export function OCCertificate(props: OCCertificateProps) {
 
           <View style={s.item}>
             <Text style={s.itemNumber}>2. Fees paid up to</Text>
-            <Text style={s.itemText}>The date by which the fees for the lot have been paid up to is: {feesPaidUpTo || "n/a"}</Text>
+            {/* Through fmtDate like every other date here. It came off a date
+                picker as a raw ISO string and went onto the certificate as
+                "2026-09-30", on the one document a lender or a conveyancer
+                reads word for word. */}
+            <Text style={s.itemText}>The date by which the fees for the lot have been paid up to is: {feesPaidUpTo ? fmtDate(feesPaidUpTo) : "n/a"}</Text>
           </View>
 
           <View style={s.item}>

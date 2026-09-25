@@ -2,6 +2,7 @@ import { Page, View, Text, Image, Document } from "@react-pdf/renderer";
 import { ocLegalName } from "@/lib/oc-legal-name";
 import { StyleSheet } from "@react-pdf/renderer";
 import type { LevyNoticeProps } from "../types";
+import { formatDateShort } from "@/lib/format-date";
 import "../fonts"; // Register NunitoSans
 
 const c = {
@@ -27,11 +28,7 @@ function fmt(amount: number): string {
 }
 
 function fmtDate(date: Date): string {
-  return date.toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDateShort(date);
 }
 
 export function LevyNotice({

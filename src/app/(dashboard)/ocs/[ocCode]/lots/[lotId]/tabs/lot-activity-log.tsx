@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { LotActivityEntry } from "@/lib/actions/lot-overview";
 
+import { formatDateTimeShort } from "@/lib/format-date";
 // The lot activity log, read-only. One-line rows, no
 // per-row detail dialog (the row IS the disclosure). Paginated client-side.
 
@@ -24,13 +25,7 @@ const HISTORY_PAGE_SIZE = 20;
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleString("en-AU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTimeShort(d);
 }
 
 function humanise(s: string): string {

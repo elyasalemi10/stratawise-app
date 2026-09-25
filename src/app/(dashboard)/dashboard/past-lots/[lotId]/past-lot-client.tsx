@@ -11,6 +11,7 @@ import { LevyStatusBadge } from "@/components/shared/levy-status-badge";
 import { getPastLotPageData, type PastLotPageData } from "./data";
 import { PastLotSkeleton } from "./past-lot-skeleton";
 
+import { formatDateShort } from "@/lib/format-date";
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
@@ -19,11 +20,7 @@ const formatCurrency = (n: number) =>
 // a comma and nobody noticed, so a lot with no end date showed a lone comma.
 const formatDate = (iso: string | null) =>
   iso
-    ? new Date(iso).toLocaleDateString("en-AU", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      })
+    ? formatDateShort(new Date(iso))
     : "";
 
 /** Fund type is a database enum; the user never sees the raw value. */

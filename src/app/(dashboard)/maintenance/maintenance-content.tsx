@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ContractorDrawer, type CreatedContractor } from "../contractors/contractors-content";
+import { formatDateShort, formatDateWithWeekdayShort } from "@/lib/format-date";
 import {
   createRecurringJob, updateRecurringJob, setRecurringJobStatus,
   getOCNotifyOwners, getRecurringJobNotifyTargets, getRecurringJobDocuments,
@@ -50,9 +51,7 @@ import {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "";
-  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-AU", {
-    day: "numeric", month: "short", year: "numeric",
-  });
+  return formatDateShort(new Date(`${iso.slice(0, 10)}T00:00:00`));
 }
 function formatMoney(n: number | null): string {
   if (n == null) return "";
@@ -853,7 +852,7 @@ const OCC_STATUS_LABEL: Record<string, string> = { scheduled: "Scheduled", atten
 const OCC_STATUS_VARIANT: Record<string, "success" | "neutral" | "info"> = { scheduled: "info", attended: "success", skipped: "neutral" };
 
 function fmtOccDate(iso: string) {
-  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  return formatDateWithWeekdayShort(new Date(`${iso.slice(0, 10)}T00:00:00`));
 }
 
 function JobScheduleSection({ jobId }: { jobId: string }) {

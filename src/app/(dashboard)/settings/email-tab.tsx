@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { GmailSetupTutorial } from "@/components/shared/gmail-setup-tutorial";
 import { saveGmailSetup, disconnectMailProvider } from "./actions";
 
+import { formatDateShort } from "@/lib/format-date";
 // Settings → Email tab.
 //
 // Two visual modes:
@@ -238,7 +239,7 @@ function ConnectedView({
                 Connected
                 {config.configured_at && (
                   <span className="text-muted-foreground">
-                    · since {new Date(config.configured_at).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}
+                    · since {formatDateShort(new Date(config.configured_at))}
                   </span>
                 )}
               </div>

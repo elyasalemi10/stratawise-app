@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { importBankTransactions } from "./actions";
 
+import { formatDateShort } from "@/lib/format-date";
 interface Account {
   id: string;
   account_name: string | null;
@@ -27,7 +28,7 @@ const formatCurrency = (n: number) =>
 
 const formatDate = (iso: string | null): string => {
   if (!iso) return "";
-  return new Date(`${iso}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+  return formatDateShort(new Date(`${iso}T00:00:00`));
 };
 
 function parseCsvCells(text: string): string[][] {

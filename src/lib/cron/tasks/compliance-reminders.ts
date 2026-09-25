@@ -2,6 +2,7 @@ import { createServerClient } from "@/lib/supabase";
 import { sendComplianceReminderEmail } from "@/lib/email";
 import { isNotificationOptedOut, resolveCompanyLogo } from "@/lib/notifications";
 
+import { formatDateLong } from "@/lib/format-date";
 // Daily compliance sweep. Notifies managers (in-app + email, opt-out
 // respected) about:
 //   - OC insurance policies expiring within 30 days  (type insurance_expiring)
@@ -41,7 +42,7 @@ function addDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 function humanDate(iso: string): string {
-  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+  return formatDateLong(new Date(`${iso.slice(0, 10)}T00:00:00`));
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

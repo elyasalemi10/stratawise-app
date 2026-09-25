@@ -8,6 +8,7 @@ import { LevyStatusBadge } from "@/components/shared/levy-status-badge";
 import { getOwnerLeviesPageData, type OwnerLeviesPageData } from "./data";
 import { OwnerLeviesSkeleton } from "./owner-levies-skeleton";
 
+import { formatDateShort } from "@/lib/format-date";
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(n);
 
@@ -90,7 +91,7 @@ export function OwnerLeviesClient() {
                         <p className="text-xs text-muted-foreground">
                           {levy.oc_name}
                           {levy.lot_number !== null ? ` · Lot ${levy.lot_number}` : ""} · Due{" "}
-                          {levy.due_date}
+                          {formatDateShort(levy.due_date)}
                         </p>
                       </div>
                     </div>

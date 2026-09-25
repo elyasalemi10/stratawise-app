@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/empty-state";
+import { formatDateTimeShort } from "@/lib/format-date";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -28,13 +29,7 @@ const COLUMNS = ["Sent", "To", "Subject", "Type", "Attachment", "Status"];
 
 function formatWhen(iso: string | null): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleString("en-AU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatDateTimeShort(new Date(iso));
 }
 
 export function EmailLog({

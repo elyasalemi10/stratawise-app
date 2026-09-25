@@ -29,6 +29,7 @@ import { CreateAccountDrawer } from "@/components/chart-of-accounts/create-accou
 import { ExcludeLotsDrawer } from "@/components/budget/exclude-lots-drawer";
 import { useSetBreadcrumb } from "@/lib/breadcrumb-context";
 
+import { formatDateNumeric } from "@/lib/format-date";
 const FUND_LABEL: Record<string, string> = {
   operating: "Admin Fund",
 };
@@ -298,7 +299,7 @@ export function BudgetDetailContent({
               {funds.map((f) => (
                 <Badge key={f} variant="neutral">{FUND_LABEL[f] ?? f}</Badge>
               ))}
-              {budget.approved_at && <span>Approved {new Date(budget.approved_at).toLocaleDateString("en-AU")}</span>}
+              {budget.approved_at && <span>Approved {formatDateNumeric(new Date(budget.approved_at))}</span>}
             </div>
           </div>
         </div>

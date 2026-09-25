@@ -6,6 +6,8 @@
  * against today's. Past a week the distance stops meaning anything ("47d
  * ago") and the date is what you actually want.
  */
+import { formatDateShort } from "@/lib/format-date";
+
 export function relativeDate(iso: string | null | undefined, now: number = Date.now()): string {
   if (!iso) return "";
   const then = new Date(iso).getTime();
@@ -29,9 +31,5 @@ export function relativeDate(iso: string | null | undefined, now: number = Date.
   if (days === 1) return "Yesterday";
   if (days < 7) return `${days}d ago`;
 
-  return new Date(then).toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDateShort(new Date(then));
 }

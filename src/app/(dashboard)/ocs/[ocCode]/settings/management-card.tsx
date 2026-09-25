@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { DatePicker } from "@/components/shared/date-picker";
+import { formatDateShort } from "@/lib/format-date";
 import {
   Dialog,
   DialogContent,
@@ -126,9 +127,7 @@ export function ManagementCard({
                   )}
                 {agreement?.start_date && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Active since {new Date(agreement.start_date).toLocaleDateString("en-AU", {
-                      day: "numeric", month: "short", year: "numeric",
-                    })}
+                    Active since {formatDateShort(new Date(agreement.start_date))}
                   </p>
                 )}
               </div>

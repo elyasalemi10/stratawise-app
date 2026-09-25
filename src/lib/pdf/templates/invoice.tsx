@@ -1,6 +1,7 @@
 import { Page, View, Text, Image, Document, StyleSheet } from "@react-pdf/renderer";
 import "../fonts";
 
+import { formatDateShort } from "@/lib/format-date";
 const c = {
   foreground: "#1a1f2e",
   muted: "#6b7280",
@@ -64,11 +65,7 @@ function fmt(amount: number): string {
 }
 
 function fmtDate(date: Date): string {
-  return date.toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDateShort(date);
 }
 
 export function Invoice({

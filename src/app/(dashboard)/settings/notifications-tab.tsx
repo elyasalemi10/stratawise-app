@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import type { NotificationPrefRow, AutoOptOutEntry } from "./data";
 
+import { formatDateShortPadded } from "@/lib/format-date";
 type Channel = "email" | "in_app";
 
 const CHANNEL_LABEL: Record<Channel, string> = { email: "Email", in_app: "In app" };
@@ -28,11 +29,7 @@ const NOTIFICATION_TYPE_LABEL: Record<string, string> = Object.fromEntries(
 type StateMap = Record<string, { email: boolean; in_app: boolean }>;
 
 function formatAutoOptOutDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-AU", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDateShortPadded(new Date(iso));
 }
 
 export function NotificationsTab({

@@ -27,6 +27,7 @@ import {
 } from "@/lib/validations/meetings";
 import type { NotifyOwnerOption } from "@/lib/actions/recurring-jobs";
 
+import { formatDateNumeric, formatDateTimeWithWeekdayLong } from "@/lib/format-date";
 /** Every enum gets a _LABEL lookup. Components import the labels, never the
  *  raw values. */
 const NOTICE_SCOPE_OPTIONS = [
@@ -42,9 +43,7 @@ const STATUS_VARIANT: Record<MeetingStatus, "neutral" | "info" | "warning" | "su
 };
 
 function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString("en-AU", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit",
-  });
+  return formatDateTimeWithWeekdayLong(new Date(iso));
 }
 
 export function MeetingDetailContent({
@@ -103,7 +102,7 @@ export function MeetingDetailContent({
         <p className="mt-1 text-sm text-muted-foreground">
           {MEETING_TYPE_LABELS[meeting.meeting_type as MeetingType]}
           {meeting.reference_number ? ` · ${meeting.reference_number}` : ""}
-          {meeting.notice_sent_at ? ` · Notice sent ${new Date(meeting.notice_sent_at).toLocaleDateString("en-AU")}` : ""}
+          {meeting.notice_sent_at ? ` · Notice sent ${formatDateNumeric(new Date(meeting.notice_sent_at))}` : ""}
         </p>
       </div>
 

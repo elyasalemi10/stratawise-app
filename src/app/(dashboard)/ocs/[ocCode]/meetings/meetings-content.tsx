@@ -8,6 +8,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/shared/empty-state";
+import { formatDateTimeWithWeekdayShort } from "@/lib/format-date";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -35,10 +36,7 @@ const STATUS_VARIANT: Record<MeetingStatus, "neutral" | "info" | "warning" | "su
 };
 
 function formatWhen(iso: string): string {
-  return new Date(iso).toLocaleString("en-AU", {
-    weekday: "short", day: "numeric", month: "short", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-  });
+  return formatDateTimeWithWeekdayShort(new Date(iso));
 }
 
 export function MeetingsContent({

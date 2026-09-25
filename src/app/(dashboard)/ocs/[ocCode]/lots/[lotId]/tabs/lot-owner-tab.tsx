@@ -28,6 +28,7 @@ import {
 import type { LotOwnerInfo } from "@/lib/actions/lot-ownership";
 import type { OwnershipHistoryEntry } from "@/lib/validations/settlement";
 import type { LotEngagement } from "@/lib/actions/lot-engagement";
+import { formatDateLong, formatMonthYearShort } from "@/lib/format-date";
 import {
   updateLotOwnerContact,
 } from "@/lib/actions/lot-edit";
@@ -45,16 +46,12 @@ function initials(name: string | null | undefined): string {
 
 function formatLongDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
-  return new Date(iso).toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  return formatDateLong(new Date(iso));
 }
 
 function formatMonthYear(iso: string | null | undefined): string | null {
   if (!iso) return null;
-  return new Date(iso).toLocaleDateString("en-AU", { month: "short", year: "numeric" });
+  return formatMonthYearShort(new Date(iso));
 }
 
 function formatRelativeDay(iso: string): string {

@@ -15,8 +15,9 @@ import {
 import { createBlogPost, deleteBlogPost, importAiPost, type BlogPostRow } from "@/lib/actions/blog";
 import { AI_POST_PROMPT } from "@/lib/blog/ai-prompt";
 
+import { formatDateShort } from "@/lib/format-date";
 const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+  formatDateShort(new Date(iso));
 
 export function BlogList({ posts }: { posts: BlogPostRow[] }) {
   const router = useRouter();

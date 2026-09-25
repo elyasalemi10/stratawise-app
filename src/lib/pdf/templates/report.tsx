@@ -2,6 +2,7 @@ import { Page, View, Text, Image, Document } from "@react-pdf/renderer";
 import { StyleSheet } from "@react-pdf/renderer";
 import "../fonts";
 
+import { formatDateShort } from "@/lib/format-date";
 const c = {
   foreground: "#1a1f2e",
   muted: "#6b7280",
@@ -84,7 +85,7 @@ function fmt(n: number): string {
 function fmtDate(date: string): string {
   if (!date) return "";
   const d = date.includes("T") ? new Date(date) : new Date(date + "T00:00:00");
-  return d.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+  return formatDateShort(d);
 }
 
 function capitalize(str: string): string {

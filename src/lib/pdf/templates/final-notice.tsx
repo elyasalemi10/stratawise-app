@@ -3,6 +3,7 @@ import { ocLegalName } from "@/lib/oc-legal-name";
 import type { FinalNoticeProps } from "../types";
 import "../fonts";
 
+import { formatDateLong } from "@/lib/format-date";
 const c = {
   foreground: "#1a1f2e",
   muted: "#6b7280",
@@ -18,7 +19,7 @@ function fmt(n: number): string {
 }
 function fmtDate(d: Date | string): string {
   const date = typeof d === "string" ? new Date(`${d.slice(0, 10)}T00:00:00`) : d;
-  return date.toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+  return formatDateLong(date);
 }
 
 export function FinalNotice({

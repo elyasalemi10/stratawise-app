@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { getNotifications, getUnreadCount, markAsRead, markAllAsRead, type Notification } from "@/lib/actions/notifications";
 import { resolveInboxRowProviders } from "@/lib/actions/inbox-email";
 
+import { formatDayMonthShort } from "@/lib/format-date";
 const TYPE_ICONS: Record<string, typeof FileText> = {
   levy_issued: FileText,
   insurance_expiry: Shield,
@@ -73,7 +74,7 @@ function timeAgo(dateStr: string): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(dateStr).toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+  return formatDayMonthShort(new Date(dateStr));
 }
 
 export function NotificationBell() {

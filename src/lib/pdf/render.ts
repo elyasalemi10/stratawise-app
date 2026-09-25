@@ -24,6 +24,7 @@ import type { LevyNoticeProps } from "@/lib/pdf/types";
 import { generateAndUploadLevyPDF, generateLevyPDFBuffer } from "@/lib/levy-pdf";
 import { fetchObject, keyFromPublicUrl } from "@/lib/storage/r2";
 
+import { formatDateLongPadded } from "@/lib/format-date";
 interface RenderOptions {
   force?: boolean; // bypass the pdf_url cache check
 }
@@ -411,9 +412,5 @@ async function assembleLevyNoticeProps(
 
 function formatDateLong(iso: string): string {
   const d = new Date(iso + (iso.length === 10 ? "T00:00:00Z" : ""));
-  return d.toLocaleDateString("en-AU", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+  return formatDateLongPadded(d);
 }

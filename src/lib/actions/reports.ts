@@ -5,6 +5,7 @@ import { createServerClient } from "@/lib/supabase";
 import { getLotOwners } from "@/lib/actions/lot-ownership";
 import { companyDisplayName, companyLegalName } from "@/lib/company-name";
 
+import { formatDateLong } from "@/lib/format-date";
 // ─── Levy History ──────────────────────────────────────────
 
 export async function getLevyHistory(ocId: string, lotId?: string) {
@@ -228,7 +229,7 @@ export async function getOCCertificateData(ocId: string, lotId: string, applican
   const fmtAU = (d: string | null | undefined) => {
     if (!d) return "";
     const dt = d.includes("T") ? new Date(d) : new Date(d + "T00:00:00");
-    return dt.toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+    return formatDateLong(dt);
   };
   const insuranceSummary = (insurance ?? []).length > 0
     ? (insurance ?? []).map((p) => {

@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { saveStep, completeWizard, type DraftJson, type DraftLot } from "../actions";
 import { WizardActions } from "./_components/wizard-actions";
 
+import { formatDateLong } from "@/lib/format-date";
 // Wizard Step 4 sub-step 1 , Opening balances.
 //
 // Anchored to the management start date (Step 1). Per-lot arrears live in a
@@ -168,7 +169,7 @@ export function Step4OpeningBalances({
             As at management start date:{" "}
             <span className="font-medium text-foreground">
               {managementStart
-                ? new Date(managementStart).toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" })
+                ? formatDateLong(new Date(managementStart))
                 : "(set on Step 1)"}
             </span>
           </p>

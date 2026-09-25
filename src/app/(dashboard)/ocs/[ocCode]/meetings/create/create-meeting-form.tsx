@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { createMeetingWithNotice } from "@/lib/actions/meetings";
 import { MEETING_TYPE_LABELS, type MeetingType, type MeetingFormat } from "@/lib/validations/meetings";
 
+import { formatDateTimeWithWeekdayShort } from "@/lib/format-date";
 type Step = "type" | "details" | "agenda" | "notice" | "review";
 
 const STEPS: Array<{ key: Step; number: number; label: string; icon: LucideIcon }> = [
@@ -456,7 +457,7 @@ export function CreateMeetingForm({
               <dt className="text-muted-foreground">OC</dt><dd className="text-foreground">{ocName}</dd>
               <dt className="text-muted-foreground">Type</dt><dd className="text-foreground">{MEETING_TYPE_LABELS[meetingType]}</dd>
               <dt className="text-muted-foreground">Title</dt><dd className="text-foreground">{title.trim() || MEETING_TYPE_LABELS[meetingType]}</dd>
-              <dt className="text-muted-foreground">When</dt><dd className="text-foreground">{date ? new Date(`${date}T${time}:00`).toLocaleString("en-AU", { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : ""}</dd>
+              <dt className="text-muted-foreground">When</dt><dd className="text-foreground">{date ? formatDateTimeWithWeekdayShort(new Date(`${date}T${time}:00`)) : ""}</dd>
               <dt className="text-muted-foreground">Format</dt>
               <dd className="text-foreground">{format === "online" ? "Online" : "In person"}</dd>
               {format === "in_person" && address.formatted && (<><dt className="text-muted-foreground">Address</dt><dd className="text-foreground">{address.formatted}</dd></>)}

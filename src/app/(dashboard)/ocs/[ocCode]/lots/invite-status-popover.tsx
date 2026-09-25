@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { formatDateShort } from "@/lib/format-date";
 import {
   getLotInvitationHistory,
   inviteLotOwner,
@@ -66,11 +67,7 @@ interface Invitation {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDateShort(new Date(iso));
 }
 
 const PILL: Record<Status, { variant: "success" | "warning" | "info" | "neutral"; label: string }> = {

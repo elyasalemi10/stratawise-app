@@ -19,6 +19,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { formatDateShort } from "@/lib/format-date";
 import type {
   DashboardPageData,
   OwnerDashboardData,
@@ -77,7 +78,7 @@ function PastLotsGrid({
 }) {
   const formatDate = (iso: string | null) =>
     iso
-      ? new Date(iso).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })
+      ? formatDateShort(new Date(iso))
       : "";
 
   return (

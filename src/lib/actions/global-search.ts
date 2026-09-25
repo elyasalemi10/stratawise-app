@@ -3,6 +3,7 @@
 import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 
+import { formatDateNumeric } from "@/lib/format-date";
 // ─── Result types ────────────────────────────────────────────────
 
 export type SearchHitType =
@@ -337,7 +338,7 @@ export async function globalSearch(
       type: "meeting",
       id: r.id,
       title: r.title || r.reference_number,
-      subtitle: [oc.name, r.meeting_type, new Date(r.date_time).toLocaleDateString("en-AU")].filter(Boolean).join(" · "),
+      subtitle: [oc.name, r.meeting_type, formatDateNumeric(new Date(r.date_time))].filter(Boolean).join(" · "),
       badge: "Meeting",
       href: `/ocs/${oc.code}/meetings`,
     });

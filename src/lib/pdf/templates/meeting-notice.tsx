@@ -1,6 +1,7 @@
 import { Page, View, Text, Image, Document, StyleSheet } from "@react-pdf/renderer";
 import { ocLegalName } from "@/lib/oc-legal-name";
 import type { MeetingNoticeProps } from "../types";
+import { formatDateLong } from "@/lib/format-date";
 import "../fonts"; // Register NunitoSans
 
 const c = {
@@ -24,7 +25,7 @@ export function MeetingNotice(props: MeetingNoticeProps) {
 
   const motions = agenda.filter((a) => a.motion && a.motion.trim().length > 0);
   const quorumLots = Math.max(1, Math.ceil(ocLotCount / 2));
-  const noticeDateLabel = date.toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+  const noticeDateLabel = formatDateLong(date);
   const isAgm = meetingType === "agm";
   const titleLine = isAgm ? "Notice of Annual General Meeting" : "Notice of Special General Meeting";
   const formatLabel = format === "online"

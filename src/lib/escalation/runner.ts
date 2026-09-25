@@ -12,6 +12,7 @@ import { resolveWorkflowForOC, renderTemplate, computeInterest, addDaysIso, fall
 import type { FollowupStep } from "@/lib/validations/escalation";
 import { companyLegalName } from "@/lib/company-name";
 
+import { formatDateLong } from "@/lib/format-date";
 // In-app notify the OC's managers about a follow-up event (escalation email
 // sent). Type 'escalation_step' is opt-outable in Settings ,
 // Notifications, so we honour each manager's preference.
@@ -77,7 +78,7 @@ function fmtMoney(n: number): string {
   return `$${n.toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 function fmtDate(iso: string): string {
-  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "long", year: "numeric" });
+  return formatDateLong(new Date(`${iso.slice(0, 10)}T00:00:00`));
 }
 
 interface SweepResult { instancesCreated: number; stepsFired: number; errors: number }

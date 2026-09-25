@@ -2,6 +2,7 @@ import { createServerClient } from "@/lib/supabase";
 import { sendLevyCsvReminderEmail } from "@/lib/email";
 import { isNotificationOptedOut, resolveCompanyLogo } from "@/lib/notifications";
 
+import { formatDateLong } from "@/lib/format-date";
 // Daily reminder: when an OC's next levy run is due within 7 days but no fresh
 // bank CSV has been imported in the last 7 days, nudge the manager (email +
 // in-app) to upload one so arrears on the notices stay accurate. Fires once
@@ -16,9 +17,7 @@ function addDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 function humanDate(iso: string): string {
-  return new Date(`${iso}T00:00:00`).toLocaleDateString("en-AU", {
-    day: "numeric", month: "long", year: "numeric",
-  });
+  return formatDateLong(new Date(`${iso}T00:00:00`));
 }
 
 //

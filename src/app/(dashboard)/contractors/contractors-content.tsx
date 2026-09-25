@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { cn } from "@/lib/utils";
+import { formatDateShort } from "@/lib/format-date";
 import {
   createContractor, updateContractor, setContractorStatus,
 } from "@/lib/actions/contractors";
@@ -35,7 +36,7 @@ import {
 function expiryBadge(expiry: string | null): { variant: "success" | "warning" | "destructive" | "neutral"; label: string } | null {
   if (!expiry) return null;
   const days = Math.ceil((new Date(`${expiry}T00:00:00`).getTime() - Date.now()) / 86_400_000);
-  const label = new Date(`${expiry}T00:00:00`).toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" });
+  const label = formatDateShort(new Date(`${expiry}T00:00:00`));
   if (days < 0) return { variant: "destructive", label: `Expired ${label}` };
   if (days <= 30) return { variant: "warning", label };
   return { variant: "success", label };

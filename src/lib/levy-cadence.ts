@@ -16,6 +16,8 @@
 //   FY=July, annual,    MSD=2026-08-01 → 1 Jul 2027 (next year's FY start)
 //   FY=Jan,  monthly,   MSD=2026-05-15 → 1 Jun 2026 (5 months after 1 Jan 2026)
 
+import { formatDateLong } from "@/lib/format-date";
+
 export type LevyFrequency = "monthly" | "quarterly" | "half_yearly" | "annually";
 
 export const FREQUENCY_LABELS: Record<LevyFrequency, string> = {
@@ -77,9 +79,5 @@ export function nextLevyDue(
 /** Display the next-levy-due date in AU long format, or "," if unset. */
 export function formatLevyDueDisplay(d: Date | null): string {
   if (!d) return ",";
-  return d.toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  return formatDateLong(d);
 }
