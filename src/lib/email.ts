@@ -1801,31 +1801,13 @@ async function resolveManagerSenderEmail(
   }
 }
 
+// Display name on mail sent through a manager's connected mailbox. The
+// company's brand only, never the individual manager's name.
 async function resolveManagerDisplayName(
   managerProfileId: string,
 ): Promise<string | undefined> {
   try {
-    const supabase = createServerClient();
-    const { data } = await supabase
-      .from("profiles")
-      .select("first_name, last_name, management_company_id")
-      .eq("id", managerProfileId)
-      .maybeSingle();
-    if (!data) return undefined;
-    const person = [data.first_name, data.last_name].filter(Boolean).join(" ");
-    let company: string | null = null;
-    if (data.management_company_id) {
-      const { data: companyRow } = await supabase
-        .from("management_companies")
-        .select("name")
-        .eq("id", data.management_company_id)
-        .maybeSingle();
-      company = (companyRow as { name: string | null } | null)?.name ?? null;
-    }
-    if (person && company) return `${person} - ${company}`;
-    if (person) return person;
-    if (company) return company;
-    return undefined;
+    return (await resolveManagerCompanyName(managerProfileId)) ?? undefined;
   } catch {
     return undefined;
   }
