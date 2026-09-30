@@ -518,7 +518,7 @@ export async function sendLevyEmail({
           <p style="margin:0;font-size:14px;font-weight:600;color:#0E314C;">${noAutoLink(dueDate)}</p>
         </div>
         <p style="margin:0;color:#0E314C;font-size:14px;">
-          Your levy notice is attached as a PDF. Please open it for the full breakdown, including any arrears or adjustments, and payment details.
+          Your levy notice is attached as a PDF. Please open it for the full breakdown and payment details.
         </p>
     `, brand),
     attachments: [
