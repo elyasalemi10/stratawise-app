@@ -93,19 +93,15 @@ export function managerEmailAddress(username: string | null | undefined): string
   return `${username.toLowerCase()}@${brandDomain()}`;
 }
 
-// Standardised FROM header for manager-initiated mail. Renders as
-// "Manager Name - Company <username@brand-domain>" so the recipient sees who
-// they're hearing from and which managing agency they represent. Falls back
-// gracefully when either name component is missing.
+// Standardised FROM header for manager-initiated mail. The display name is
+// the company's brand only ("MyOCM <username@brand-domain>"), never the
+// individual manager: owners deal with the firm, not a person, and a name
+// in the sender reads as personal mail.
 export function managerEmailFrom(
   username: string | null | undefined,
-  personName: string | null | undefined,
   companyName: string | null | undefined,
 ): string | null {
   const addr = managerEmailAddress(username);
   if (!addr) return null;
-  const person = personName?.trim() || "";
-  const company = companyName?.trim() || "StrataWise";
-  const display = person ? `${person} - ${company}` : company;
-  return formatFrom(display, addr);
+  return formatFrom(companyName?.trim() || "StrataWise", addr);
 }

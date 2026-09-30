@@ -93,12 +93,10 @@ export async function resolveManagerFromHeader(
     const supabase = createServerClient();
     const { data } = await supabase
       .from("profiles")
-      .select("email_username, first_name, last_name, management_company_id")
+      .select("email_username, management_company_id")
       .eq("id", managerProfileId)
       .maybeSingle();
     if (!data) return null;
-    const personName =
-      [data.first_name, data.last_name].filter(Boolean).join(" ") || null;
     let companyName: string | null = null;
     if (data.management_company_id) {
       const { data: company } = await supabase
@@ -108,7 +106,7 @@ export async function resolveManagerFromHeader(
         .maybeSingle();
       companyName = brandName(company ?? {}) || null;
     }
-    return managerEmailFrom(data.email_username, personName, companyName);
+    return managerEmailFrom(data.email_username, companyName);
   } catch (err) {
     console.error("[email] resolveManagerFromHeader failed:", err);
     return null;
