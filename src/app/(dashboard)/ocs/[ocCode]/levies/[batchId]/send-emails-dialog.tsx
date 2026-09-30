@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Paperclip, X, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,12 @@ interface Props {
   onSent: (sentCount: number) => void;
 }
 
+function seedOverrides(levies: LevyRow[]): Record<string, string> {
+  const seed: Record<string, string> = {};
+  for (const l of levies) seed[l.id] = l.owner_contact_email ?? "";
+  return seed;
+}
+
 const ATTACHMENT_LIMIT_BYTES = 20 * 1024 * 1024;
 // Recipient table shows 4.5 rows worth of vertical room before scrolling so
 // users can scan the recipients and feel there's more if they scroll. Each
@@ -55,22 +61,24 @@ export function SendEmailsDialog({
   // Default to the first option (typically the manager's connected
   // mailbox). Manager can switch when there are 2+ options.
   const [fromAddress, setFromAddress] = useState<string>(mailboxOptions[0]?.value ?? "");
-  useEffect(() => {
-    if (open) setFromAddress(mailboxOptions[0]?.value ?? "");
-  }, [open, mailboxOptions]);
 
   // Pre-fill overrides with the owner's stored email so the manager can
-  // edit in place instead of typing into an empty input.
-  const initialOverrides = useMemo(() => {
-    const seed: Record<string, string> = {};
-    for (const l of levies) seed[l.id] = l.owner_contact_email ?? "";
-    return seed;
-  }, [levies]);
-  const [overrides, setOverrides] = useState<Record<string, string>>(initialOverrides);
-  // Reset whenever the dialog reopens (levies set may have changed).
-  useEffect(() => {
-    if (open) setOverrides(initialOverrides);
-  }, [open, initialOverrides]);
+  // edit in place instead of typing into an empty input. An edit here is a
+  // one-off for this send; the owner's saved email is untouched.
+  const [overrides, setOverrides] = useState<Record<string, string>>(() => seedOverrides(levies));
+
+  // Seed ONLY on the closed-to-open transition. The parent rebuilds `levies`
+  // and `mailboxOptions` on every render, so keying the reset on them wiped
+  // the manager's typing each time the page re-rendered (the 30s poll), and
+  // the input snapped back to the saved email.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      setOverrides(seedOverrides(levies));
+      setFromAddress(mailboxOptions[0]?.value ?? "");
+    }
+  }
 
   const [attachments, setAttachments] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
