@@ -26,6 +26,7 @@ export interface PastLotRow {
   id: string;
   lot_number: number;
   unit_number: string | null;
+  street_address?: string | null;
 }
 
 export interface PastSubRow {
@@ -124,7 +125,7 @@ export async function getDashboardPageData(): Promise<DashboardPageData> {
   const [pastLotsResult, pastSubsResult, subsResult, lotsResult, leviesResult, paymentsResult] =
     await Promise.all([
       pastLotIds.length
-        ? supabase.from("lots").select("id, lot_number, unit_number").in("id", pastLotIds)
+        ? supabase.from("lots").select("id, lot_number, unit_number, street_address").in("id", pastLotIds)
         : Promise.resolve(none),
       pastSubIds.length
         ? supabase.from("owners_corporations").select("id, name, address, plan_number").in("id", pastSubIds)
@@ -133,7 +134,7 @@ export async function getDashboardPageData(): Promise<DashboardPageData> {
         ? supabase.from("owners_corporations").select("id, short_code, name, address, plan_number").in("id", subIds)
         : Promise.resolve(none),
       lotIds.length
-        ? supabase.from("lots").select("id, oc_id, lot_number, unit_number, lot_entitlement, opening_balance").in("id", lotIds)
+        ? supabase.from("lots").select("id, oc_id, lot_number, unit_number, street_address, lot_entitlement, opening_balance").in("id", lotIds)
         : Promise.resolve(none),
       lotIds.length
         ? supabase

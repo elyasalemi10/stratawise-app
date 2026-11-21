@@ -10,6 +10,8 @@ export type ParsedLot = {
   lot_number: number;
   /** Apartment / unit label distinct from the lot number, e.g. "3B" or "204". */
   unit_number: string | null;
+  /** The lot's own street line when the plan shows one, e.g. "2 Sooty Lane". */
+  street_address: string | null;
   unit_entitlement: number;
   lot_liability: number;
   confidence: number;
@@ -83,7 +85,8 @@ const RESPONSE_SCHEMA = {
               type: Type.OBJECT,
               properties: {
                 lot_number: { type: Type.INTEGER, description: "Lot number on the plan (the legal 'Lot N' identifier)." },
-                unit_number: { type: Type.STRING, nullable: true, description: "Apartment/unit label distinct from the lot number, e.g. '3B' or 'Unit 204'. Null if the plan only shows lot numbers." },
+                unit_number: { type: Type.STRING, nullable: true, description: "Apartment/unit label distinct from the lot number, e.g. '3B' or 'Unit 204'. Null if the plan only shows lot numbers. NEVER copy the lot number into this field." },
+                street_address: { type: Type.STRING, nullable: true, description: "This lot's own street number and street name when the plan states one for it, e.g. '2 Sooty Lane'. Street numbers often differ from lot numbers: only fill this when the plan explicitly ties the street number to this lot. Null otherwise; never infer it from the lot number." },
                 unit_entitlement: { type: Type.NUMBER },
                 lot_liability: { type: Type.NUMBER },
                 confidence: { type: Type.NUMBER, description: "0-1 confidence in this row's values." },

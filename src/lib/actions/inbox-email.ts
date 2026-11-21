@@ -1,5 +1,6 @@
 "use server";
 
+import { lotLabel } from "@/lib/lot-label";
 import { z } from "zod";
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
@@ -155,7 +156,7 @@ export async function getInboxEmail(
   if (row.lot_id) {
     const { data: lot } = await supabase
       .from("lots")
-      .select("lot_number, unit_number")
+      .select("lot_number, unit_number, street_address")
       .eq("id", row.lot_id as string)
       .maybeSingle();
     if (lot) {
@@ -523,12 +524,12 @@ export async function searchPeopleForAssociate(
   const ocIds = Array.from(ocMap.keys());
   const { data: lots } = await supabase
     .from("lots")
-    .select("id, oc_id, lot_number, unit_number")
+    .select("id, oc_id, lot_number, unit_number, street_address")
     .in("oc_id", ocIds)
     .limit(2000);
   const lotMap = new Map<string, { oc_id: string; label: string }>();
   for (const l of (lots ?? []) as Array<{ id: string; oc_id: string; lot_number: number; unit_number: string | null }>) {
-    const label = `Lot ${l.lot_number}${l.unit_number ? ` · Unit ${l.unit_number}` : ""}`;
+    const label = `${lotLabel(l)}`;
     lotMap.set(l.id, { oc_id: l.oc_id, label });
   }
   if (lotMap.size === 0) return [];
@@ -590,14 +591,14 @@ export async function listAllPeopleOwnerships(): Promise<PersonOwnershipOption[]
   const ocIds = Array.from(ocMap.keys());
   const { data: lots } = await supabase
     .from("lots")
-    .select("id, oc_id, lot_number, unit_number")
+    .select("id, oc_id, lot_number, unit_number, street_address")
     .in("oc_id", ocIds)
     .limit(5000);
   const lotMap = new Map<string, { oc_id: string; label: string }>();
   for (const l of (lots ?? []) as Array<{ id: string; oc_id: string; lot_number: number; unit_number: string | null }>) {
     lotMap.set(l.id, {
       oc_id: l.oc_id,
-      label: `Lot ${l.lot_number}${l.unit_number ? ` · Unit ${l.unit_number}` : ""}`,
+      label: `${lotLabel(l)}`,
     });
   }
   if (lotMap.size === 0) return [];
@@ -667,7 +668,7 @@ export async function listLotsForAssociate(
 
   const { data } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number")
+    .select("id, lot_number, unit_number, street_address")
     .eq("oc_id", ocId)
     .order("lot_number", { ascending: true });
   const lots = data ?? [];
@@ -686,8 +687,11 @@ export async function listLotsForAssociate(
   }
 
   return lots.map((l) => {
-    const unit = l.unit_number as string | null;
-    const label = `Lot ${l.lot_number}${unit ? ` · Unit ${unit}` : ""}`;
+    const label = lotLabel({
+      lot_number: l.lot_number as number,
+      unit_number: l.unit_number as string | null,
+      street_address: l.street_address as string | null,
+    });
     return {
       id: l.id as string,
       label,

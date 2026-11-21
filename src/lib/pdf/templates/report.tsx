@@ -1,3 +1,4 @@
+import { lotLabel, lotSuffix } from "@/lib/lot-label";
 import { Page, View, Text, Image, Document } from "@react-pdf/renderer";
 import { StyleSheet } from "@react-pdf/renderer";
 import "../fonts";
@@ -306,7 +307,7 @@ export function LotRegisterReport({ data, title, subtitle, address, logoUrl, sho
               : "Unassigned";
           return (
             <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
-              <Text style={[s.td, { width: showContact ? "8%" : "15%" }]}>Lot {lot.lot_number}{lot.unit_number ? ` (${lot.unit_number})` : ""}</Text>
+              <Text style={[s.td, { width: showContact ? "8%" : "15%" }]}>{lotLabel(lot)}</Text>
               <Text style={[s.td, { width: showContact ? "18%" : "40%" }]}>{ownerLabel}</Text>
               {showContact && <Text style={[s.tdMuted, { width: "22%" }]}>{lot.owner_contact_email ?? ""}</Text>}
               {showContact && <Text style={[s.td, { width: "14%" }]}>{lot.owner_contact_phone ?? ""}</Text>}
@@ -423,6 +424,7 @@ export function AuditTrailReport({ data, title, subtitle, address, logoUrl }: { 
 export interface OutstandingArrearsRowData {
   lot_number: number;
   unit_number: string | null;
+  street_address?: string | null;
   owner_display_name: string | null;
   principal_outstanding: number;
   interest_outstanding: number;
@@ -473,7 +475,7 @@ export function OutstandingArrearsReport({
         </View>
         {data.map((r, i) => (
           <View key={i} style={i % 2 === 0 ? s.rowStriped : s.row} wrap={false}>
-            <Text style={[s.td, { width: "8%" }]}>{r.lot_number}{r.unit_number ? ` / ${r.unit_number}` : ""}</Text>
+            <Text style={[s.td, { width: "8%" }]}>{r.lot_number}{lotSuffix(r)}</Text>
             <Text style={[s.td, { width: "22%" }]}>{r.owner_display_name ?? ""}</Text>
             <Text style={[s.tdMuted, { width: "14%" }]}>{r.oldest_due_date ? fmtDate(r.oldest_due_date) : ","}</Text>
             <Text style={[s.tdRight, { width: "10%" }]}>{r.days_overdue}</Text>
@@ -517,6 +519,7 @@ export interface OwnerStatementEntryData {
 export interface OwnerStatementReportData {
   lot_number: number;
   unit_number: string | null;
+  street_address?: string | null;
   owner_display_name: string | null;
   from_date: string;
   to_date: string;
@@ -538,7 +541,7 @@ export function OwnerStatementReportPdf({
   address?: string;
   logoUrl?: string | null;
 }) {
-  const lotLabel = `${report.lot_number}${report.unit_number ? ` / ${report.unit_number}` : ""}`;
+  const lotLabel = `${report.lot_number}${lotSuffix(report)}`;
   const info = [
     { label: "OC", value: subtitle },
     ...(address ? [{ label: "Address", value: address }] : []),

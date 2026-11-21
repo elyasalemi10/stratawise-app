@@ -1,5 +1,6 @@
 "use client";
 
+import { lotSuffix } from "@/lib/lot-label";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, ChevronDown } from "lucide-react";
@@ -34,6 +35,7 @@ interface PreviewLot {
   lot_id: string;
   lot_number: number;
   unit_number: string | null;
+  street_address?: string | null;
   owner_display_name: string | null;
   liability: number;
   share: number;
@@ -89,6 +91,7 @@ export function SpecialLevyForm({
     lot_id: string;
     lot_number: number;
     unit_number: string | null;
+    street_address?: string | null;
     owner_display_name: string | null;
     liability: number;
   }>;
@@ -212,6 +215,7 @@ export function SpecialLevyForm({
       lot_id: s.lot_id,
       lot_number: s.lot_number,
       unit_number: s.unit_number,
+      street_address: s.street_address ?? null,
       owner_display_name: s.owner_display_name,
       liability: s.liability,
       share: s.shareCents / 100,
@@ -538,7 +542,7 @@ export function SpecialLevyForm({
                         <div className="text-left">
                           <span className="font-medium text-foreground">
                             Lot {l.lot_number}
-                            {l.unit_number ? ` (Unit ${l.unit_number})` : ""}
+                            {lotSuffix(l)}
                           </span>
                           <span className="ml-2 text-muted-foreground">
                             {l.owner_display_name ?? "Unassigned"}

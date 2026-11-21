@@ -35,7 +35,8 @@ export type DraftInsurancePolicy = {
 
 export type DraftLot = {
   lot_number: number;
-  unit_number?: string;            // e.g. "3B" , apartment / unit label distinct from lot_number
+  unit_number?: string;            // e.g. "3B" , apartment / unit label distinct from lot_number. Optional.
+  street_address?: string;         // e.g. "2 Sooty Lane" , the lot's own street line (townhouses). Optional.
   // Nullable to support the wizard's "empty until Continue" UX , both
   // fields can be undefined while the manager is typing, and validation
   // only fires on submit. Liability is allowed to be 0 (services lots);
@@ -642,6 +643,7 @@ export async function parseDraftWithGemini(draftId: string) {
       lots: (first?.lots ?? []).map((l) => ({
         lot_number: l.lot_number,
         unit_number: l.unit_number ?? undefined,
+        street_address: l.street_address ?? undefined,
         unit_entitlement: l.unit_entitlement,
         lot_liability: l.lot_liability,
       })),
@@ -1233,7 +1235,8 @@ export async function completeWizard(draftId: string) {
     const lotsToInsert = d.lots.map((l) => ({
       oc_id: oc.id,
       lot_number: l.lot_number,
-      unit_number: l.unit_number || null,
+      unit_number: l.unit_number?.trim() || null,
+      street_address: l.street_address?.trim() || null,
       lot_entitlement: l.unit_entitlement ?? 0,
       lot_liability: l.lot_liability ?? 0,
       opening_balance: l.opening_balance ?? 0,
@@ -1263,6 +1266,7 @@ export async function completeWizard(draftId: string) {
           ? {
               lot_number: draftLot.lot_number,
               unit_number: draftLot.unit_number ?? null,
+              street_address: draftLot.street_address ?? null,
               unit_entitlement: draftLot.unit_entitlement ?? null,
               lot_liability: draftLot.lot_liability ?? null,
               opening_balance: draftLot.opening_balance ?? 0,
@@ -1878,6 +1882,7 @@ export async function selectDetectedOc(
       lots: (target.lots ?? []).map((l) => ({
         lot_number: l.lot_number,
         unit_number: l.unit_number ?? undefined,
+        street_address: l.street_address ?? undefined,
         unit_entitlement: l.unit_entitlement,
         lot_liability: l.lot_liability,
       })),
@@ -1927,7 +1932,7 @@ export async function createDraftFromDetectedOc(sourceDraftId: string, ocIndex: 
       postcode?: string | null;
       lot_count?: number;
       building_name?: string | null;
-      lots?: Array<{ lot_number: number; unit_number?: string | null; unit_entitlement: number; lot_liability: number }>;
+      lots?: Array<{ lot_number: number; unit_number?: string | null; street_address?: string | null; unit_entitlement: number; lot_liability: number }>;
     }> } | null)?.detected_ocs ?? [];
     const target = detectedOcs[ocIndex];
     if (!target) return { error: "That OC index isn't in the source plan." };
@@ -1954,6 +1959,7 @@ export async function createDraftFromDetectedOc(sourceDraftId: string, ocIndex: 
       lots: (target.lots ?? []).map((l) => ({
         lot_number: l.lot_number,
         unit_number: l.unit_number ?? undefined,
+        street_address: l.street_address ?? undefined,
         unit_entitlement: l.unit_entitlement,
         lot_liability: l.lot_liability,
       })),

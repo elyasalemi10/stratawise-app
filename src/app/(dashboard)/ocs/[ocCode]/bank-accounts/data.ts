@@ -1,5 +1,6 @@
 "use server";
 
+import { lotLabel } from "@/lib/lot-label";
 import { createServerClient } from "@/lib/supabase";
 import { requireOCAccess } from "@/lib/auth";
 
@@ -118,7 +119,7 @@ export async function getBankAccountsPageData(
     // tiny, and the picker has to open instantly or nobody labels anything.
     supabase
       .from("lots")
-      .select("id, lot_number, unit_number")
+      .select("id, lot_number, unit_number, street_address")
       .eq("oc_id", ocId)
       .order("lot_number", { ascending: true }),
     supabase
@@ -209,9 +210,9 @@ export async function getBankAccountsPageData(
     ),
   );
   const entityOptions: EntityOption[] = [
-    ...((lots ?? []) as Array<{ id: string; lot_number: number; unit_number: string | null }>)
+    ...((lots ?? []) as Array<{ id: string; lot_number: number; unit_number: string | null; street_address: string | null }>)
       .map((l) => {
-        const where = `Lot ${l.lot_number}${l.unit_number ? ` · Unit ${l.unit_number}` : ""}`;
+        const where = `${lotLabel(l)}`;
         const owner = ownerByLot.get(l.id) ?? null;
         // The person first, because a manager reconciling a receipt is
         // looking for the name on it. The lot underneath, because that is

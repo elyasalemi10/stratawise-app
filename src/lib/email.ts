@@ -10,6 +10,7 @@ import {
 import { managerEmailFrom, brandDomain, formatFrom } from "@/lib/manager-username";
 import { sendViaGmail, isGmailConfigured } from "@/lib/google/gmail-client";
 import { companyDisplayName as brandName } from "@/lib/company-name";
+import { lotAddress as lotAddressOf } from "@/lib/lot-label";
 
 function getResend() {
   return new Resend(process.env.RESEND_API_KEY);
@@ -464,11 +465,13 @@ interface SendLevyEmailParams {
   /** Optional explicit sender address (e.g. picked by the manager in the
    *  send dialog). When set, overrides the OC-resolved default sender. */
   fromOverride?: string | null;
-  /** The lot this notice is for. A lot has no address of its own: it is the
-   *  OC's address plus the unit, so both come in and the subject line is
-   *  composed here rather than by four separate callers. */
+  /** The lot this notice is for. Its address is its own street address when
+   *  it has one (townhouses), otherwise the OC's address plus the unit. All
+   *  three come in and the subject line is composed here, via lot-label.ts,
+   *  rather than by four separate callers. */
   lotNumber?: number | null;
   unitNumber?: string | null;
+  streetAddress?: string | null;
 }
 
 export async function sendLevyEmail({
@@ -488,11 +491,16 @@ export async function sendLevyEmail({
   fromOverride,
   lotNumber,
   unitNumber,
+  streetAddress,
 }: SendLevyEmailParams) {
   const greeting = ownerName ? `Hi ${ownerName},` : "Hi,";
   const brand = await brandForOC(ocId ?? null);
   if (companyLogoUrl) brand.logoUrl = companyLogoUrl;
-  const lotAddress = lotAddressLine(lotNumber, unitNumber, ocAddress);
+  const lotAddress =
+    lotAddressOf(
+      { lot_number: lotNumber ?? null, unit_number: unitNumber, street_address: streetAddress },
+      ocAddress,
+    ) ?? "";
 
   // Manager-picked override wins over the OC-resolved default. The
   // override is already a bare email so wrap it with the firm display
@@ -707,29 +715,6 @@ interface SharedSenderHeader {
   // identity becomes the FROM header. Optional , falls back to the brand
   // noreply identity when missing.
   ocId?: string | null;
-}
-
-/**
- * How a lot is named in correspondence. A lot has no address of its own: the
- * OC holds the street address and the lot holds the unit, so "the address of
- * the lot" is the two put together.
- *
- * Degrades a step at a time rather than all at once, so a missing unit or a
- * missing OC address still leaves something an owner recognises.
- */
-function lotAddressLine(
-  lotNumber: number | null | undefined,
-  unitNumber: string | null | undefined,
-  ocAddress: string | null | undefined,
-): string {
-  const unit = unitNumber?.trim();
-  const address = ocAddress?.trim();
-  if (unit && address) return `${unit}/${address}`;
-  if (address && lotNumber != null) return `Lot ${lotNumber}, ${address}`;
-  if (address) return address;
-  if (unit) return `Unit ${unit}`;
-  if (lotNumber != null) return `Lot ${lotNumber}`;
-  return "";
 }
 
 /**

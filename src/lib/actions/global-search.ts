@@ -1,5 +1,6 @@
 "use server";
 
+import { lotLabel as formatLotLabel } from "@/lib/lot-label";
 import { requireCompanyRole } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 
@@ -172,7 +173,7 @@ export async function globalSearch(
     // in PostgREST, so query lot_owners with embed.
     supabase
       .from("v_lot_current_owners")
-      .select("id, name, email, phone, postal_address, tenant_name, tenant_email, lot:lots!inner(id, oc_id, lot_number, unit_number)")
+      .select("id, name, email, phone, postal_address, tenant_name, tenant_email, lot:lots!inner(id, oc_id, lot_number, unit_number, street_address)")
       .or(`name.ilike.${like},email.ilike.${like},phone.ilike.${like},postal_address.ilike.${like},tenant_name.ilike.${like},tenant_email.ilike.${like}`)
       .in("lot.oc_id", scopedOcIds)
       .limit(PER_TYPE_LIMIT),
@@ -268,7 +269,7 @@ export async function globalSearch(
 
   // Lot owners. PostgREST returns the nested `lot` as an array even for a
   // to-one relationship via `!inner`, so we read the first element.
-  type LotEmbed = { id: string; oc_id: string; lot_number: number; unit_number: string | null };
+  type LotEmbed = { id: string; oc_id: string; lot_number: number; unit_number: string | null; street_address: string | null };
   type LotOwnerRow = {
     id: string;
     name: string | null;
@@ -283,7 +284,7 @@ export async function globalSearch(
     if (!lot) continue;
     const oc = ocCodeById.get(lot.oc_id);
     if (!oc) continue;
-    const lotLabel = `Lot ${lot.lot_number}${lot.unit_number ? ` · Unit ${lot.unit_number}` : ""}`;
+    const lotLabel = formatLotLabel(lot);
     hits.push({
       type: "lot_owner",
       id: r.id,

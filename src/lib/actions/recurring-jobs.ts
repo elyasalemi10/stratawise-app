@@ -1,5 +1,6 @@
 "use server";
 
+import { lotLabel as formatLotLabel } from "@/lib/lot-label";
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
@@ -55,16 +56,16 @@ export async function getOCNotifyOwners(ocId: string): Promise<NotifyOwnerOption
   const supabase = createServerClient();
   const { data } = await supabase
     .from("v_lot_current_owners")
-    .select("id, name, email, delivery_preference, lots!inner(lot_number, unit_number)")
+    .select("id, name, email, delivery_preference, lots!inner(lot_number, unit_number, street_address)")
     .eq("oc_id", ocId)
     .not("email", "is", null)
     .neq("delivery_preference", "postal");
 
   return (data ?? []).map((r) => {
-    const lot = (r as { lots: { lot_number?: number; unit_number?: string | null } | { lot_number?: number; unit_number?: string | null }[] }).lots;
+    const lot = (r as { lots: { lot_number?: number; unit_number?: string | null; street_address?: string | null } | { lot_number?: number; unit_number?: string | null; street_address?: string | null }[] }).lots;
     const lotRow = Array.isArray(lot) ? lot[0] : lot;
     const lotLabel = lotRow
-      ? `Lot ${lotRow.lot_number}${lotRow.unit_number ? ` (Unit ${lotRow.unit_number})` : ""}`
+      ? formatLotLabel({ lot_number: lotRow.lot_number ?? null, unit_number: lotRow.unit_number, street_address: lotRow.street_address })
       : "";
     return {
       lot_owner_id: r.id as string,

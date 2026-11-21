@@ -47,10 +47,11 @@ function computeAutoTier(lotCount: number): { tier: number; description: string 
 }
 
 function defaultLot(idx: number): DraftLot {
-  // 1-based chronological default for lot_number only. Unit number stays
-  // blank so the manager has to enter it explicitly (Victorian strata
-  // plans don't guarantee unit number == lot number, and the previous
-  // auto-fill produced silent bugs where new lots got mislabelled).
+  // 1-based chronological default for lot_number only. Unit number and
+  // street address stay blank and are OPTIONAL: Victorian plans don't
+  // guarantee either matches the lot number. Requiring a unit made managers
+  // of townhouse OCs type the lot number into it, and notices then printed
+  // "Lot 8 Unit 8" for a house at 2 Sooty Lane.
   return { lot_number: idx + 1 };
 }
 
@@ -80,7 +81,7 @@ export function Step3Lots({
   const [lotCountInvalid, setLotCountInvalid] = useState(false);
 
   const [lotErrors, setLotErrors] = useState<Array<{
-    name?: boolean; type?: boolean; lotNumber?: boolean; unit?: boolean;
+    name?: boolean; type?: boolean; lotNumber?: boolean; unit?: boolean; street?: boolean;
     entitlement?: boolean; liability?: boolean; tenantName?: boolean;
   }>>([]);
   const [pending, setPending] = useState(false);
@@ -119,6 +120,7 @@ export function Step3Lots({
         if ("owner_name" in patch) cur.name = false;
         if ("lot_number" in patch) cur.lotNumber = false;
         if ("unit_number" in patch) cur.unit = false;
+        if ("street_address" in patch) cur.street = false;
         if ("unit_entitlement" in patch) cur.entitlement = false;
         if ("lot_liability" in patch) cur.liability = false;
         if ("tenant_name" in patch) cur.tenantName = false;
@@ -150,6 +152,7 @@ export function Step3Lots({
 
     const lotNumberCounts = new Map<number, number[]>();
     const unitNumberCounts = new Map<string, number[]>();
+    const streetCounts = new Map<string, number[]>();
 
     lots.forEach((l, i) => {
       if (!(l.owner_name ?? "").trim()) {
@@ -165,13 +168,16 @@ export function Step3Lots({
         lotNumberCounts.set(l.lot_number, arr);
       }
       const unitKey = (l.unit_number ?? "").trim();
-      if (!unitKey) {
-        problems.push(`Row ${i + 1}: unit number is required.`);
-        nextLotErrors[i].unit = true;
-      } else {
+      if (unitKey) {
         const arr = unitNumberCounts.get(unitKey.toUpperCase()) ?? [];
         arr.push(i);
         unitNumberCounts.set(unitKey.toUpperCase(), arr);
+      }
+      const streetKey = (l.street_address ?? "").trim().replace(/\s+/g, " ").toUpperCase();
+      if (streetKey) {
+        const arr = streetCounts.get(streetKey) ?? [];
+        arr.push(i);
+        streetCounts.set(streetKey, arr);
       }
       const ent = l.unit_entitlement;
       if (ent == null || Number.isNaN(Number(ent)) || Number(ent) <= 0) {
@@ -195,6 +201,12 @@ export function Step3Lots({
       if (indices.length > 1) {
         problems.push(`Duplicate unit number: ${unit}`);
         indices.forEach((i) => { nextLotErrors[i].unit = true; });
+      }
+    }
+    for (const [, indices] of streetCounts) {
+      if (indices.length > 1) {
+        problems.push(`Duplicate street address: ${(lots[indices[0]].street_address ?? "").trim()}`);
+        indices.forEach((i) => { nextLotErrors[i].street = true; });
       }
     }
     setLotErrors(nextLotErrors);
@@ -281,6 +293,7 @@ export function Step3Lots({
             <tr className="text-xs font-medium">
               <th className="px-2 py-2 text-left">Name</th>
               <th className="px-2 py-2 text-left w-20">Lot</th>
+              <th className="px-2 py-2 text-left w-44">Street address</th>
               <th className="px-2 py-2 text-left w-24">Unit</th>
               <th className="px-2 py-2 text-left w-32">Entitlement</th>
               <th className="px-2 py-2 text-left w-32">Liability</th>
@@ -313,13 +326,23 @@ export function Step3Lots({
                     </td>
                     <td className="px-2 py-1.5" data-cell={`${idx}:2`}>
                       <Input
-                        value={lot.unit_number ?? ""}
-                        onChange={(e) => updateLot(idx, { unit_number: e.target.value })}
-                        aria-invalid={errs.unit || undefined}
+                        value={lot.street_address ?? ""}
+                        onChange={(e) => updateLot(idx, { street_address: e.target.value })}
+                        aria-invalid={errs.street || undefined}
+                        placeholder="Street address"
                         className="h-8"
                       />
                     </td>
                     <td className="px-2 py-1.5" data-cell={`${idx}:3`}>
+                      <Input
+                        value={lot.unit_number ?? ""}
+                        onChange={(e) => updateLot(idx, { unit_number: e.target.value })}
+                        aria-invalid={errs.unit || undefined}
+                        placeholder="Unit"
+                        className="h-8"
+                      />
+                    </td>
+                    <td className="px-2 py-1.5" data-cell={`${idx}:4`}>
                       <NumberInput
                         value={lot.unit_entitlement != null ? String(lot.unit_entitlement) : ""}
                         onChange={(v) => updateLot(idx, { unit_entitlement: v === "" ? undefined : parseFloat(v) })}
@@ -327,7 +350,7 @@ export function Step3Lots({
                         className="h-8"
                       />
                     </td>
-                    <td className="px-2 py-1.5" data-cell={`${idx}:4`}>
+                    <td className="px-2 py-1.5" data-cell={`${idx}:5`}>
                       <NumberInput
                         value={lot.lot_liability != null ? String(lot.lot_liability) : ""}
                         onChange={(v) => updateLot(idx, { lot_liability: v === "" ? undefined : parseFloat(v) })}
@@ -356,7 +379,7 @@ export function Step3Lots({
               <td className="px-2 py-2" colSpan={4}>Totals</td>
               <td className="px-2 py-2 tabular-nums">{totalEntitlement.toLocaleString()}</td>
               <td className="px-2 py-2 tabular-nums">{totalLiability.toLocaleString()}</td>
-              <td colSpan={2} />
+              <td />
             </tr>
           </tfoot>
         </table>

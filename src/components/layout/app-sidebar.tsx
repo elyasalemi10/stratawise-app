@@ -1,5 +1,6 @@
 "use client";
 
+import { lotLabel } from "@/lib/lot-label";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
@@ -451,7 +452,7 @@ function OCSwitcherRow({
           <span className="block truncate font-medium">{sub.name}</span>
           {isLotOwner && sub.lots && sub.lots.length > 0 ? (
             <span className="block text-xs text-muted-foreground truncate">
-              {sub.lots.map((l) => `Lot ${l.lot_number}${l.unit_number ? ` Unit ${l.unit_number}` : ""}`).join(", ")}
+              {sub.lots.map((l) => lotLabel(l)).join("; ")}
             </span>
           ) : (
             sub.plan_number && (

@@ -1,5 +1,6 @@
 "use server";
 
+import { lotLabel } from "@/lib/lot-label";
 import { requireCompanyRole, requireOCAccess, getCurrentProfile } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import {
@@ -107,7 +108,7 @@ async function buildPage(
       ? supabase.from("owners_corporations").select("id, name").in("id", ocIds)
       : Promise.resolve({ data: [] }),
     lotIds.length
-      ? supabase.from("lots").select("id, lot_number, unit_number").in("id", lotIds)
+      ? supabase.from("lots").select("id, lot_number, unit_number, street_address").in("id", lotIds)
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -120,8 +121,8 @@ async function buildPage(
     ((ocs.data ?? []) as Array<{ id: string; name: string }>).map((o) => [o.id, o.name]),
   );
   const lotById = new Map(
-    ((lots.data ?? []) as Array<{ id: string; lot_number: number; unit_number: string | null }>).map(
-      (l) => [l.id, l.unit_number ? `Lot ${l.lot_number} (${l.unit_number})` : `Lot ${l.lot_number}`],
+    ((lots.data ?? []) as Array<{ id: string; lot_number: number; unit_number: string | null; street_address: string | null }>).map(
+      (l) => [l.id, lotLabel(l)],
     ),
   );
 

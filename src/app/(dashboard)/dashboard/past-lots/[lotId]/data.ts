@@ -91,7 +91,7 @@ export async function getPastLotPageData(lotId: string): Promise<PastLotPageData
         .select("id, short_code, name, address, plan_number")
         .eq("id", oc_id)
         .single(),
-      supabase.from("lots").select("id, lot_number, unit_number").eq("id", lotId).single(),
+      supabase.from("lots").select("id, lot_number, unit_number, street_address").eq("id", lotId).single(),
       supabase
         .from("levy_notices")
         .select(

@@ -72,7 +72,8 @@ export const step3Schema = z.object({
 
 export const lotRowSchema = z.object({
   lot_number: z.string().min(1, "Lot number is required"),
-  unit_number: z.string().min(1, "Unit number is required"),
+  unit_number: z.string().optional().default(""),
+  street_address: z.string().optional().default(""),
   invitee_name: z.string().optional().default(""),
   invitee_email: z.string().email("Invalid email").optional().or(z.literal("")),
   invitee_phone: z.string().optional().default(""),

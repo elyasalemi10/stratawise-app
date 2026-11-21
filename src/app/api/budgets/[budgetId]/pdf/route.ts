@@ -97,14 +97,15 @@ export async function GET(
   // fallback, matching the levy generator at src/lib/actions/levy.ts).
   const { data: rawLots } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, lot_entitlement, lot_liability")
+    .select("id, lot_number, unit_number, street_address, lot_entitlement, lot_liability")
     .eq("oc_id", oc.id)
     .order("lot_number");
-  type RawLot = { id: string; lot_number: number; unit_number: string | null; lot_entitlement: number; lot_liability: number };
+  type RawLot = { id: string; lot_number: number; unit_number: string | null; street_address: string | null; lot_entitlement: number; lot_liability: number };
   const rawLotsTyped = (rawLots ?? []) as RawLot[];
   const lots = rawLotsTyped.map((l) => ({
     lot_number: l.lot_number,
     unit_number: l.unit_number,
+    street_address: l.street_address ?? null,
     liability:
       l.lot_liability > 0
         ? l.lot_liability

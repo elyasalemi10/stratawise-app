@@ -1,5 +1,6 @@
 "use client";
 
+import { lotSuffix } from "@/lib/lot-label";
 import { Suspense } from "react";
 import Link from "next/link";
 import {
@@ -100,7 +101,7 @@ function PastLotsGrid({
                     <h3 className="text-sm font-semibold text-foreground truncate">{sub.name}</h3>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Lot {lot.lot_number}
-                      {lot.unit_number ? ` · Unit ${lot.unit_number}` : ""}
+                      {lotSuffix(lot)}
                     </p>
                   </div>
                   <Badge variant="neutral" className="shrink-0">
@@ -267,7 +268,7 @@ function OwnerDashboard({ data }: { data: OwnerDashboardData }) {
                         <div key={lot.id} className="flex items-center justify-between text-xs">
                           <span className="text-muted-foreground">
                             Lot {lot.lot_number}
-                            {lot.unit_number ? ` (Unit ${lot.unit_number})` : ""}
+                            {lotSuffix(lot)}
                           </span>
                           <span className="text-foreground font-medium">
                             {lot.lot_entitlement ? `${lot.lot_entitlement} UE` : ""}

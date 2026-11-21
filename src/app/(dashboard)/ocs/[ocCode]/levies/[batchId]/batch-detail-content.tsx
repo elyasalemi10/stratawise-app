@@ -1,5 +1,6 @@
 "use client";
 
+import { lotSuffix } from "@/lib/lot-label";
 import { useState, useTransition } from "react";
 import { refetchCached } from "@/lib/use-cached-data";
 import { useRouter } from "next/navigation";
@@ -203,6 +204,7 @@ export function BatchDetailContent({
     id: l.id,
     lot_number: l.lot_number,
     unit_number: l.unit_number,
+    street_address: l.street_address ?? null,
     owner_display_name: l.owner_display_name,
     owner_contact_email: l.owner_contact_email,
     reference_number: l.reference_number,
@@ -347,7 +349,7 @@ export function BatchDetailContent({
                     <div className="text-left">
                       <span className="font-medium text-foreground">
                         Lot {levy.lot_number}
-                        {levy.unit_number ? ` (Unit ${levy.unit_number})` : ""}
+                        {lotSuffix(levy)}
                       </span>
                       <span className="ml-2 text-muted-foreground">
                         {levy.owner_display_name ?? ""}

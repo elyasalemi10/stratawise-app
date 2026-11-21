@@ -1,5 +1,6 @@
 "use client";
 
+import { lotLabel } from "@/lib/lot-label";
 import { useRef, useState, useTransition } from "react";
 import { Paperclip, X, Mail } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +22,7 @@ interface LevyRow {
   id: string;
   lot_number: number;
   unit_number: string | null;
+  street_address?: string | null;
   owner_display_name: string | null;
   owner_contact_email: string | null;
   reference_number: string;
@@ -210,8 +212,8 @@ export function SendEmailsDialog({
               <TableBody>
                 {levies.map((l) => (
                   <TableRow key={l.id}>
-                    <TableCell className="font-mono text-xs">
-                      {l.lot_number}{l.unit_number ? `/${l.unit_number}` : ""}
+                    <TableCell className="text-xs">
+                      {lotLabel(l)}
                     </TableCell>
                     <TableCell className="text-foreground">
                       {l.owner_display_name ?? ""}

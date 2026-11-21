@@ -3,6 +3,7 @@
 // instances one step at a time: sends the manager-authored reminder emails,
 // generates the s.32 final notice on the final email step.
 
+import { lotLabel as formatLotLabel, lotSuffix } from "@/lib/lot-label";
 import { createServerClient } from "@/lib/supabase";
 import { getOCArrears } from "@/lib/lot-balance";
 import { sendEscalationEmail } from "@/lib/email";
@@ -266,7 +267,7 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
     .select("name, email, postal_address")
     .eq("lot_id", charge.lot_id)
     .maybeSingle();
-  const { data: lot } = await supabase.from("lots").select("lot_number, unit_number").eq("id", charge.lot_id).maybeSingle();
+  const { data: lot } = await supabase.from("lots").select("lot_number, unit_number, street_address").eq("id", charge.lot_id).maybeSingle();
 
   // What the LOT owes, not what is left on one notice. Chasing a single
   // notice's remainder understated the debt whenever a lot was behind on
@@ -307,7 +308,7 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
     interest_note: interestNote,
   };
 
-  const lotLabel = lot ? `Lot ${lot.lot_number}` : "a lot";
+  const lotLabel = lot ? formatLotLabel(lot) : "a lot";
 
   {
     // Every step is an email.
@@ -324,7 +325,7 @@ async function advanceInstance(supabase: any, inst: Record<string, unknown>, tod
             documentTitle: "Final Fee Notice",
             referenceNumber: charge.reference_number ?? "",
             date: new Date(),
-            lotOwner: { name: owner?.name ?? "", lot_number: String(lot?.lot_number ?? ""), address: owner?.postal_address ?? ocAddress },
+            lotOwner: { name: owner?.name ?? "", lot_number: lot ? `${lot.lot_number}${lotSuffix(lot)}` : "", address: owner?.postal_address ?? ocAddress },
             levyReference: charge.reference_number ?? "",
             levyDueDate: charge.due_date as string,
             amountOutstanding: principal,

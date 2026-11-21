@@ -52,6 +52,7 @@ interface LotOption {
   id: string;
   lot_number: number;
   unit_number: string | null;
+  street_address?: string | null;
   owner_display_name: string | null;
 }
 

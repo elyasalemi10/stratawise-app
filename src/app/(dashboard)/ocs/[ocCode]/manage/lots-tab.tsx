@@ -1,5 +1,6 @@
 "use client";
 
+import { lotPlace } from "@/lib/lot-label";
 import { useState, useCallback, useEffect } from "react";
 import { urlSegment } from "@/lib/short-code-shared";
 import { useRouter } from "next/navigation";
@@ -155,13 +156,13 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
           rows white, even rows --muted, hover --secondary-hover. The
           stripe colour is now a proper token instead of an arbitrary
           hsl(). Column widths held with table-fixed + a <colgroup> so
-          Lot / Unit / Invite status never wrap onto two lines; long Name
+          Lot / Address / Invite status never wrap onto two lines; long Name
           / Email truncate with a title-attr fallback. */}
       <div className="rounded-lg border border-border overflow-hidden">
         <Table variant="striped" className="table-fixed">
           <colgroup>
             <col className="w-28" />
-            <col className="w-28" />
+            <col className="w-44" />
             <col />
             {!isLotOwner && <col className="w-[22%]" />}
             <col className="w-40" />
@@ -171,7 +172,7 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
           <TableHeader>
             <TableRow>
               <TableHead>Lot number</TableHead>
-              <TableHead>Unit number</TableHead>
+              <TableHead>Address</TableHead>
               <TableHead>Name</TableHead>
               {!isLotOwner && <TableHead>Email</TableHead>}
               <TableHead>Units of entitlement</TableHead>
@@ -192,7 +193,7 @@ export function LotsTab({ lots, ocId, isEditing = false, onLotUpdated, isLotOwne
                   className={!isEditing && !isLotOwner ? "cursor-pointer" : ""}
                 >
                   <TableCell className="font-medium text-foreground tabular-nums whitespace-nowrap">{lot.lot_number}</TableCell>
-                  <TableCell className="text-muted-foreground tabular-nums whitespace-nowrap">{lot.unit_number ?? ""}</TableCell>
+                  <TableCell className="text-muted-foreground truncate" title={lotPlace(lot)}>{lotPlace(lot)}</TableCell>
                   <TableCell className="truncate">
                     {ownerLabel ? (
                       <span className={`font-medium ${lot.owner_status === "member" ? "text-foreground" : "text-muted-foreground"}`} title={ownerLabel}>

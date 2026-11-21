@@ -1,5 +1,6 @@
 "use client";
 
+import { lotSuffix } from "@/lib/lot-label";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Wallet, Users, Landmark, ListChecks, Building2, Wrench, MoreHorizontal, type LucideIcon } from "lucide-react";
@@ -311,7 +312,7 @@ export function CreateFundForm({
                         </TableCell>
                         <TableCell className="py-1 text-foreground">
                           Lot {l.lot_number}
-                          {l.unit_number ? ` (Unit ${l.unit_number})` : ""}
+                          {lotSuffix(l)}
                         </TableCell>
                         <TableCell className="py-1">
                           <NumberInput

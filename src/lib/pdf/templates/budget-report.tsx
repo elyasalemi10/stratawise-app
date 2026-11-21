@@ -1,3 +1,4 @@
+import { lotLabel } from "@/lib/lot-label";
 import { Page, View, Text, Image, Document, StyleSheet } from "@react-pdf/renderer";
 import { ocLegalName } from "@/lib/oc-legal-name";
 import type { BudgetReportProps } from "../types";
@@ -64,8 +65,8 @@ const PERIOD_LABEL: Record<string, string> = {
   annually: "Per year",
 };
 
-function fmtLot(lotNumber: number, unitNumber?: string | null): string {
-  return unitNumber ? `Lot ${lotNumber} (Unit ${unitNumber})` : `Lot ${lotNumber}`;
+function fmtLot(lot: { lot_number: number; unit_number?: string | null; street_address?: string | null }): string {
+  return lotLabel(lot);
 }
 
 export function BudgetReport({
@@ -437,7 +438,7 @@ export function BudgetReport({
               {rows.map((r, i) => (
                 <View key={i} style={i % 2 === 0 ? s.itemsRowStriped : s.itemsRow}>
                   <Text style={[s.itemsCell, { flex: lotFlex }]}>
-                    {fmtLot(r.lot.lot_number, r.lot.unit_number)}
+                    {fmtLot(r.lot)}
                   </Text>
                   <Text style={[s.itemsCellRight, { flex: liabFlex }]}>{r.liab}</Text>
                   <Text style={[s.itemsCellRight, { flex: numFlex }]}>{fmt(r.annual)}</Text>

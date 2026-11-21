@@ -1,5 +1,6 @@
 "use client";
 
+import { lotLabel as formatLotLabel } from "@/lib/lot-label";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -32,7 +33,7 @@ interface InviteAcceptContentProps {
     status: string;
     isExpired: boolean;
     oc: { id: string; name: string; address: string; plan_number: string } | null;
-    lot: { lot_number: number; unit_number: string | null } | null;
+    lot: { lot_number: number; unit_number: string | null; street_address?: string | null } | null;
   };
 }
 
@@ -48,7 +49,7 @@ export function InviteAcceptContent({ code, invitation }: InviteAcceptContentPro
   }, []);
 
   const lotLabel = invitation.lot
-    ? `Lot ${invitation.lot.lot_number}${invitation.lot.unit_number ? ` · Unit ${invitation.lot.unit_number}` : ""}`
+    ? formatLotLabel(invitation.lot)
     : null;
 
   const dead =

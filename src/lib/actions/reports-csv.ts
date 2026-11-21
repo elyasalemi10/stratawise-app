@@ -2,6 +2,7 @@
 // Kept out of the "use server" sibling (reports.ts) so client components can
 // import them without triggering Next.js' "Server Actions must be async" error.
 
+import { lotPlace } from "@/lib/lot-label";
 import type {
   OutstandingArrearsRow,
   OwnerStatementReport,
@@ -24,7 +25,7 @@ function csvRow(values: Array<string | number | null | undefined>): string {
 export function outstandingArrearsToCsv(rows: OutstandingArrearsRow[]): string {
   const header = csvRow([
     "Lot",
-    "Unit",
+    "Address",
     "Owner",
     "Principal outstanding",
     "Interest outstanding",
@@ -36,7 +37,7 @@ export function outstandingArrearsToCsv(rows: OutstandingArrearsRow[]): string {
   const body = rows.map((r) =>
     csvRow([
       r.lot_number,
-      r.unit_number ?? "",
+      lotPlace(r),
       r.owner_display_name ?? "",
       r.principal_outstanding.toFixed(2),
       r.interest_outstanding.toFixed(2),
@@ -52,7 +53,7 @@ export function outstandingArrearsToCsv(rows: OutstandingArrearsRow[]): string {
 export function ownerStatementToCsv(report: OwnerStatementReport): string {
   const meta = [
     csvRow(["Lot", report.lot_number]),
-    csvRow(["Unit", report.unit_number ?? ""]),
+    csvRow(["Address", lotPlace(report)]),
     csvRow(["Owner", report.owner_display_name ?? ""]),
     csvRow(["From", report.from_date]),
     csvRow(["To", report.to_date]),

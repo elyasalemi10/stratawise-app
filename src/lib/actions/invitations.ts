@@ -119,7 +119,7 @@ export async function getInvitationByCode(rawCode: string) {
     .select(`
       *,
       ocs:oc_id (id, name, address, plan_number),
-      lots:lot_id (lot_number, unit_number)
+      lots:lot_id (lot_number, unit_number, street_address)
     `)
     .eq("code", code)
     .single();

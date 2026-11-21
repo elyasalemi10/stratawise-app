@@ -1,5 +1,6 @@
 "use client";
 
+import { lotLabel } from "@/lib/lot-label";
 import { Users } from "lucide-react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter,
@@ -18,10 +19,6 @@ export interface ExcludeLotsDrawerProps {
   onChange: (excludedLotIds: string[]) => void;
   /** Line-item name shown in the drawer title (e.g. the account name). */
   itemLabel: string;
-}
-
-function lotLabel(lot: LotForFund): string {
-  return lot.unit_number ? `Lot ${lot.lot_number}, Unit ${lot.unit_number}` : `Lot ${lot.lot_number}`;
 }
 
 // Per-line-item lot exclusion picker. Ticking a lot EXCLUDES it from paying

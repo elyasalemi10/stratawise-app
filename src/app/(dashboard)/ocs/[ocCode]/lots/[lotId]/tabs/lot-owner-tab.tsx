@@ -266,8 +266,9 @@ export function LotOwnerTab(props: Props) {
             </div>
             <LotDetailsEditSheet lot={lotDetails} onSaved={onLotDetailsSaved} />
           </div>
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-5">
             <DetailField label="Lot number" value={String(lotDetails.lot_number)} mono />
+            <DetailField label="Street address" value={lotDetails.street_address || ""} />
             <DetailField label="Unit number" value={lotDetails.unit_number || ""} mono />
             <DetailField
               label="Entitlement"
@@ -576,6 +577,7 @@ interface LotDetailsInput {
   id: string;
   lot_number: number;
   unit_number: string | null;
+  street_address: string | null;
   lot_entitlement: number | null;
   lot_liability: number | null;
 }
@@ -605,7 +607,9 @@ function DetailField({
   );
 }
 
-// Single edit drawer for unit number / entitlement / liability. Lot number
+// Single edit drawer for street address / unit number / entitlement /
+// liability. A townhouse lot has a street address and no unit; an apartment
+// has a unit and no street address of its own. Lot number
 // itself stays locked because it's referenced by every levy notice issued
 // for the lot.
 function LotDetailsEditSheet({
@@ -615,6 +619,7 @@ function LotDetailsEditSheet({
   lot: LotDetailsInput;
   onSaved: () => void;
 }) {
+  const [street, setStreet] = React.useState(lot.street_address ?? "");
   const [unit, setUnit] = React.useState(lot.unit_number ?? "");
   const [entitlement, setEntitlement] = React.useState(
     lot.lot_entitlement !== null ? String(lot.lot_entitlement) : "",
@@ -626,13 +631,14 @@ function LotDetailsEditSheet({
   return (
     <EditSheet
       label="Lot details"
-      description="Unit number, entitlement, and liability. Lot number itself stays locked."
+      description="Street address, unit number, entitlement, and liability. Lot number itself stays locked."
       triggerLabel="Edit"
       triggerVariant="secondary"
       requireConfirmation
       confirmationMessage="These values drive levy calculations and voting rights. Save anyway?"
       onOpenChange={(open) => {
         if (open) {
+          setStreet(lot.street_address ?? "");
           setUnit(lot.unit_number ?? "");
           setEntitlement(lot.lot_entitlement !== null ? String(lot.lot_entitlement) : "");
           setLiability(lot.lot_liability !== null ? String(lot.lot_liability) : "");
@@ -650,6 +656,7 @@ function LotDetailsEditSheet({
         const { updateLotDetails } = await import("@/lib/actions/lot-edit");
         const res = await updateLotDetails({
           lot_id: lot.id,
+          street_address: street.trim() || null,
           unit_number: unit.trim() || null,
           lot_entitlement: entitlementNum,
           lot_liability: liabilityNum,
@@ -658,6 +665,14 @@ function LotDetailsEditSheet({
         return res.ok ? { ok: true as const } : { ok: false as const, error: res.error };
       }}
     >
+      <div className="space-y-1.5">
+        <Label>Street address</Label>
+        <Input
+          value={street}
+          onChange={(e) => setStreet(e.target.value)}
+          placeholder="Street address of this lot"
+        />
+      </div>
       <div className="space-y-1.5">
         <Label>Unit number</Label>
         <Input

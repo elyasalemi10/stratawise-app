@@ -1,5 +1,6 @@
 "use client";
 
+import { unitsMirrorLotNumbers } from "@/lib/lot-label";
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -12,6 +13,7 @@ import {
   Wrench,
   X,
   SlidersHorizontal,
+  AlertTriangle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -62,7 +64,7 @@ const PORTAL_OPTIONS: Array<{ value: PortalFilter; label: string }> = [
 // identifiers, owner, financials.
 function lotsToCsv(lots: LotWithFinancials[]): string {
   const header = [
-    "lot_number", "unit_number",
+    "lot_number", "street_address", "unit_number",
     "owner_name", "owner_email", "owner_phone",
     "owner_status",
     "units_of_entitlement", "lot_liability",
@@ -72,6 +74,7 @@ function lotsToCsv(lots: LotWithFinancials[]): string {
     .sort((a, b) => a.lot_number - b.lot_number)
     .map((l) => [
       l.lot_number,
+      l.street_address ?? "",
       l.unit_number ?? "",
       l.owner_display_name ?? "",
       l.owner_contact_email ?? "",
@@ -208,6 +211,7 @@ export function LotsPageContent({
       const haystacks = [
         String(lot.lot_number),
         lot.unit_number ?? "",
+        lot.street_address ?? "",
         lot.owner_display_name ?? "",
         lot.owner_contact_email ?? "",
         lot.owner_contact_phone ?? "",
@@ -363,6 +367,16 @@ export function LotsPageContent({
         </div>
       )}
 
+      {!isLotOwner && unitsMirrorLotNumbers(lots) && (
+        <div className="flex items-start gap-2.5 rounded-md border border-warning/25 bg-warning-muted px-3 py-2.5 text-sm text-warning-foreground">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            Every lot&apos;s unit number is the same as its lot number. Check each lot&apos;s
+            street address against the plan before sending notices.
+          </p>
+        </div>
+      )}
+
       <LotsTab
         lots={filteredLots}
         ocId={ocId}
@@ -386,7 +400,7 @@ export function LotsPageContent({
             open={settlementOpen}
             onClose={() => setSettlementOpen(false)}
             ocId={ocId}
-            lots={lots.map((l) => ({ id: l.id, lotNumber: Number(l.lot_number), unitNumber: l.unit_number }))}
+            lots={lots.map((l) => ({ id: l.id, lotNumber: Number(l.lot_number), unitNumber: l.unit_number, streetAddress: l.street_address }))}
             onApplied={() => refetchCached("lots:")}
           />
           <BulkInviteDialog

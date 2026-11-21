@@ -88,7 +88,7 @@ export async function updateLotField(
   // Owner fields are NOT editable here , ownership lives on
   // oc_members + profiles and changes via the invitation flow.
   const allowedFields = [
-    "lot_entitlement", "lot_liability", "unit_number", "lot_number",
+    "lot_entitlement", "lot_liability", "unit_number", "street_address", "lot_number",
   ];
 
   if (!allowedFields.includes(field)) {

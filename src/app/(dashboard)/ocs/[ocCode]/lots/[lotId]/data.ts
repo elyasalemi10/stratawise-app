@@ -1,5 +1,6 @@
 "use server";
 
+import { lotAddress } from "@/lib/lot-label";
 import { requireOCAccess } from "@/lib/auth";
 import { resolveId } from "@/lib/short-code";
 import { CHARGED_LEVY_STATUSES } from "@/lib/lot-balance";
@@ -58,7 +59,7 @@ export interface LotDetailPageData {
   engagement: Awaited<ReturnType<typeof getLotEngagement>>;
   initialSenderEmailAddress: string | null;
   initialSmsSenderId: string | null;
-  ocLots: Array<{ id: string; lotNumber: number; unitNumber: string | null }>;
+  ocLots: Array<{ id: string; lotNumber: number; unitNumber: string | null; streetAddress: string | null }>;
 }
 
 export async function getLotDetailPageData(
@@ -122,7 +123,7 @@ export async function getLotDetailPageData(
     // Sibling lots for the settlement drawer's "which lot?" selector.
     supabase
       .from("lots")
-      .select("id, lot_number, unit_number")
+      .select("id, lot_number, unit_number, street_address")
       .eq("oc_id", ocId)
       .order("lot_number", { ascending: true }),
     // The current ownership backs the header chip (payment reference,
@@ -216,9 +217,7 @@ export async function getLotDetailPageData(
         }
       : null,
     lastPaymentAt: lastPaymentRow?.payment_date ?? null,
-    lotAddress: oc?.address
-      ? `${lot.unit_number ? `Unit ${lot.unit_number} / ` : ""}${oc.address}`
-      : null,
+    lotAddress: lotAddress(lot, oc?.address),
     activity,
     portalActivity,
     communications,
@@ -228,12 +227,13 @@ export async function getLotDetailPageData(
     initialSmsSenderId: (smsSenderResult as { sender?: string | null })?.sender ?? null,
     ocLots: (
       (ocLotsResult.data as
-        | { id: string; lot_number: number; unit_number: string | null }[]
+        | { id: string; lot_number: number; unit_number: string | null; street_address: string | null }[]
         | null) ?? []
     ).map((l) => ({
       id: l.id,
       lotNumber: Number(l.lot_number),
       unitNumber: l.unit_number,
+      streetAddress: l.street_address,
     })),
   };
 }

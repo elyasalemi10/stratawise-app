@@ -1,5 +1,6 @@
 "use client";
 
+import { lotLabel } from "@/lib/lot-label";
 import { useCallback, useEffect, useState } from "react";
 import { urlSegment } from "@/lib/short-code-shared";
 import { useSearchParams } from "next/navigation";
@@ -64,7 +65,7 @@ interface LotDetailContentProps {
   initialSenderEmailAddress?: string | null;
   initialSmsSenderId?: string | null;
   /** All lots in the OC , lets the settlement drawer re-target the lot. */
-  ocLots?: { id: string; lotNumber: number; unitNumber?: string | number | null }[];
+  ocLots?: { id: string; lotNumber: number; unitNumber?: string | number | null; streetAddress?: string | null }[];
 }
 
 const TABS = [
@@ -148,12 +149,12 @@ export function LotDetailContent({
   }
 
   // Item 4 , replace the generic "Owner details" breadcrumb with entity-specific
-  // "Lot N · Unit X" so the user can see at a glance which lot they're on.
+  // "Lot N, 2 Sooty Lane" so the user can see at a glance which lot they're on.
   useSetBreadcrumb([
     { label: "Lots & Owners", href: `/ocs/${ocCode}/lots` },
     {
       label:
-        `Lot ${lot.lot_number}` + (lot.unit_number ? ` · Unit ${lot.unit_number}` : ""),
+        lotLabel(lot),
     },
   ]);
 
@@ -198,8 +199,7 @@ export function LotDetailContent({
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-                Lot {lot.lot_number}
-                {lot.unit_number ? ` · Unit ${lot.unit_number}` : ""}
+                {lotLabel(lot)}
                 {headerOwnerSuffix}
               </h1>
             </div>
@@ -309,6 +309,7 @@ export function LotDetailContent({
             id: lot.id,
             lot_number: Number(lot.lot_number),
             unit_number: lot.unit_number ?? null,
+            street_address: lot.street_address ?? null,
             lot_entitlement: lot.lot_entitlement ?? null,
             lot_liability: lot.lot_liability ?? null,
           }}

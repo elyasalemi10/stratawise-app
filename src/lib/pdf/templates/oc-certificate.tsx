@@ -1,3 +1,4 @@
+import { lotLabel as lotLabelOf } from "@/lib/lot-label";
 import { Page, View, Text, Image, Document } from "@react-pdf/renderer";
 import { StyleSheet } from "@react-pdf/renderer";
 import "../fonts";
@@ -76,6 +77,7 @@ export interface OCCertificateProps {
   ocAddress: string;
   lotNumber: number;
   lotUnitNumber?: string | null;
+  lotStreetAddress?: string | null;
 
   // Applicant
   applicantName: string;
@@ -121,7 +123,7 @@ export interface OCCertificateProps {
 
 export function OCCertificate(props: OCCertificateProps) {
   const {
-    logoUrl, signatureUrl, planNumber, ocAddress, lotNumber, lotUnitNumber,
+    logoUrl, signatureUrl, planNumber, ocAddress, lotNumber, lotUnitNumber, lotStreetAddress,
     applicantName, applicantEmail, applicationDate, certificateDate,
     currentFees, currentFeesTable, currentFeesNote, billingCycle, feesPaidUpTo, unpaidFeesTotal, levies,
     repairsInfo, insuranceCover, insuranceNote, ownInsuranceResolution, totalFundsHeld, liabilities, currentContracts,
@@ -130,7 +132,7 @@ export function OCCertificate(props: OCCertificateProps) {
     companyAddress, commonSealText, inspectionAddress,
   } = props;
 
-  const lotLabel = `Lot ${lotNumber}${lotUnitNumber ? ` (Unit ${lotUnitNumber})` : ""}`;
+  const lotLabel = lotLabelOf({ lot_number: lotNumber, unit_number: lotUnitNumber, street_address: lotStreetAddress });
 
   return (
     <Document>

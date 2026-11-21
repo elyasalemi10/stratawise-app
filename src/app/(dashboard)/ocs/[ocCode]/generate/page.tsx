@@ -15,6 +15,7 @@ interface PreloadedLot {
   lot_id: string;
   lot_number: number;
   unit_number: string | null;
+  street_address?: string | null;
   owner_display_name: string | null;
   liability: number;
 }
@@ -112,7 +113,7 @@ export default async function GenerateLeviesPage({
   const supabase = supabaseEarly;
   const { data: rawLots } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, lot_liability, lot_entitlement")
+    .select("id, lot_number, unit_number, street_address, lot_liability, lot_entitlement")
     .eq("oc_id", ocId)
     .order("lot_number");
   const lotIds = (rawLots ?? []).map((l) => l.id);
@@ -133,12 +134,14 @@ export default async function GenerateLeviesPage({
     id: string;
     lot_number: number;
     unit_number: string | null;
+    street_address?: string | null;
     lot_liability: number | null;
     lot_entitlement: number | null;
   }>).map((l) => ({
     lot_id: l.id,
     lot_number: l.lot_number,
     unit_number: l.unit_number,
+    street_address: l.street_address ?? null,
     owner_display_name: ownersByLot.get(l.id) ?? null,
     liability:
       Number(l.lot_liability) > 0

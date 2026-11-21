@@ -35,6 +35,7 @@ export async function revalidateSidebarForOC(ocId: string): Promise<void> {
 export interface SidebarLot {
   lot_number: number;
   unit_number: string | null;
+  street_address: string | null;
 }
 
 export interface SidebarOC {
@@ -223,14 +224,14 @@ export async function getSidebarOCs(): Promise<SidebarOC[]> {
       .eq("status", "active")
       .order("name"),
     lotIds.length > 0
-      ? supabase.from("lots").select("id, oc_id, lot_number, unit_number").in("id", lotIds)
+      ? supabase.from("lots").select("id, oc_id, lot_number, unit_number, street_address").in("id", lotIds)
       : Promise.resolve({ data: [] }),
   ]);
 
   const lotsMap = new Map<string, SidebarLot[]>();
   (lotsResult.data ?? []).forEach((lot) => {
     const existing = lotsMap.get(lot.oc_id) ?? [];
-    existing.push({ lot_number: lot.lot_number, unit_number: lot.unit_number });
+    existing.push({ lot_number: lot.lot_number, unit_number: lot.unit_number, street_address: lot.street_address });
     lotsMap.set(lot.oc_id, existing);
   });
 
@@ -313,6 +314,7 @@ export interface LotWithFinancials {
   lot_entitlement: number;
   lot_liability: number;
   unit_number: string | null;
+  street_address: string | null;
   owner_display_name: string | null;
   owner_contact_email: string | null;
   owner_contact_phone: string | null;
@@ -327,7 +329,7 @@ export async function getLotsWithFinancials(ocId: string): Promise<LotWithFinanc
 
   const { data: lots } = await supabase
     .from("lots")
-    .select("id, short_code, lot_number, unit_number, lot_entitlement, lot_liability, opening_balance")
+    .select("id, short_code, lot_number, unit_number, street_address, lot_entitlement, lot_liability, opening_balance")
     .eq("oc_id", ocId)
     .order("lot_number");
 
@@ -369,6 +371,7 @@ export async function getLotsWithFinancials(ocId: string): Promise<LotWithFinanc
       lot_entitlement: Number(lot.lot_entitlement),
       lot_liability: Number(lot.lot_liability),
       unit_number: lot.unit_number,
+      street_address: lot.street_address ?? null,
       owner_display_name: owner?.owner_display_name ?? null,
       owner_contact_email: owner?.owner_contact_email ?? null,
       owner_contact_phone: owner?.owner_contact_phone ?? null,

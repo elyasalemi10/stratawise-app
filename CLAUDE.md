@@ -149,6 +149,25 @@ Same shape as [src/lib/oc-legal-name.ts](src/lib/oc-legal-name.ts): a
 manager-facing nickname and a document-facing legal name, and the rule is
 which surface you are on, not which field is populated.
 
+## Lot labels , lot number, street address, unit, and one helper
+
+A lot has a **lot number** (the legal identifier: levies, liability,
+certificates, votes) and, optionally, either a **street address** of its own
+(`lots.street_address`, townhouses: "2 Sooty Lane") or a **unit** inside one
+building (`lots.unit_number`: "3B"). Street numbers and unit numbers are NOT
+the lot number and must never be assumed to be.
+
+[lot-label.ts](src/lib/lot-label.ts) is the only place that turns those into
+text: `lotLabel` ("Lot 8, 2 Sooty Lane"), `lotSuffix`, `lotPlace` and
+`lotAddress`. **Never hand-roll `Lot ${n} Unit ${u}`.** There were about 30
+copies in six formats, and one of them printed "Lot 8 Unit 8" on a levy for
+the house at 2 Sooty Lane, which an owner disputed as a levy for 8 Sooty Lane.
+
+- `unit_number` is optional. It used to be required, so townhouse OCs had the
+  lot number typed into it; the helper hides a unit equal to the lot number
+  and the lots page warns when every lot looks like that.
+- Anything selecting `unit_number` for display selects `street_address` too.
+
 ## Domain Nomenclature
 - An "Owners Corporation" (abbreviated "OC") is the legal entity that owns and manages common property , what's commonly called a "strata" in NSW or "body corporate" in QLD. Victoria uses "Owners Corporation" (Owners Corporations Act 2006).
 - **User-facing display:** ALWAYS uppercase "OC" (or full "Owners Corporation"). NEVER lowercase "oc" in prose, button labels, error toasts, table headers, breadcrumbs, etc. Watch for things like "this oc", "Failed to create oc", "Create new oc" , these are bugs.

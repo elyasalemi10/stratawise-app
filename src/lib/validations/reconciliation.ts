@@ -445,6 +445,7 @@ export interface BankTransactionDetail {
     lot_id: string;
     lot_number: string;
     unit_number: string | null;
+    street_address?: string | null;
     fund_type: FundType;
     amount_matched: number;
     match_method: ReconciliationMatchMethod;
@@ -473,6 +474,7 @@ export interface UndepositedFundsEntry {
   lot_id: string;
   lot_number: string;
   unit_number: string | null;
+  street_address?: string | null;
   bank_account_id: string;
   fund_type: FundType;
   amount: number;

@@ -1,5 +1,6 @@
 "use client";
 
+import { lotSuffix } from "@/lib/lot-label";
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Plus, X, Loader2 } from "lucide-react";
@@ -92,7 +93,7 @@ function LotRow({
           <div className="text-left">
             <span className="font-medium text-foreground">
               Lot {lot.lot_number}
-              {lot.unit_number ? ` (Unit ${lot.unit_number})` : ""}
+              {lotSuffix(lot)}
             </span>
             <span className="ml-2 text-muted-foreground">
               {lot.owner_display_name ?? "Unassigned"}
@@ -227,6 +228,7 @@ export function GenerateLeviesForm({
     lot_id: string;
     lot_number: number;
     unit_number: string | null;
+    street_address?: string | null;
     owner_display_name: string | null;
     liability: number;
   }>;

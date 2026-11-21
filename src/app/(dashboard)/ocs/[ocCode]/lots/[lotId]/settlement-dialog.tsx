@@ -1,5 +1,6 @@
 "use client";
 
+import { lotLabel, lotSuffix } from "@/lib/lot-label";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -32,6 +33,7 @@ export interface SettlementLotOption {
   id: string;
   lotNumber: number;
   unitNumber?: string | number | null;
+  streetAddress?: string | null;
 }
 
 interface PropsLotMode {
@@ -267,8 +269,14 @@ export function SettlementDialog(props: Props) {
     lotOptions.find((l) => l.id === targetLotId)?.lotNumber ??
     (targetLotId === knownLotId ? knownLotNumber : null) ??
     (targetLotId === review?.matchedLot?.id ? review?.matchedLot?.lotNumber ?? null : null);
-  const targetLotUnit =
-    lotOptions.find((l) => l.id === targetLotId)?.unitNumber ?? null;
+  const targetOption = lotOptions.find((l) => l.id === targetLotId);
+  const targetLotSuffix = targetOption
+    ? lotSuffix({
+        lot_number: targetOption.lotNumber,
+        unit_number: targetOption.unitNumber != null ? String(targetOption.unitNumber) : null,
+        street_address: targetOption.streetAddress ?? null,
+      })
+    : "";
 
   // Local validation that runs before either the mismatch popup OR the
   // direct submit fires. Returns true if the form is ready to send.
@@ -314,7 +322,7 @@ export function SettlementDialog(props: Props) {
     }
 
     toast.success(
-      `Lot ${targetLotNumber}${targetLotUnit ? ` Unit ${targetLotUnit}` : ""} successfully settled`,
+      `Lot ${targetLotNumber}${targetLotSuffix} successfully settled`,
     );
     reset();
     setMismatchStep(null);
@@ -427,14 +435,13 @@ export function SettlementDialog(props: Props) {
         {stage === "parsing" && <ParsingSkeleton />}
 
         {/* Which lot is this settlement for? On the per-lot drawer (knownLotId)
-            the lot is fixed, so show an uneditable "Settling Lot X · Unit Y".
+            the lot is fixed, so show an uneditable "Settling Lot X, <address>".
             From the OC-wide /lots entry there's no lot in context, so show the
             dropdown to choose one. */}
         {stage === "review" && !mismatchStep && knownLotId && (
           <div className="rounded-md border border-border bg-muted/30 p-3">
             <p className="text-sm text-foreground">
-              Settling <span className="font-medium">Lot {targetLotNumber}</span>
-              {targetLotUnit ? <> · <span className="font-medium">Unit {targetLotUnit}</span></> : null}
+              Settling <span className="font-medium">Lot {targetLotNumber}{targetLotSuffix}</span>
             </p>
           </div>
         )}
@@ -445,14 +452,18 @@ export function SettlementDialog(props: Props) {
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Choose a lot">
                   {targetLotNumber != null
-                    ? `Lot ${targetLotNumber}${targetLotUnit ? ` · Unit ${targetLotUnit}` : ""}`
+                    ? `Lot ${targetLotNumber}${targetLotSuffix}`
                     : "Choose a lot"}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {lotOptions.map((l) => (
                   <SelectItem key={l.id} value={l.id}>
-                    Lot {l.lotNumber}{l.unitNumber ? ` · Unit ${l.unitNumber}` : ""}
+                    {lotLabel({
+                      lot_number: l.lotNumber,
+                      unit_number: l.unitNumber != null ? String(l.unitNumber) : null,
+                      street_address: l.streetAddress ?? null,
+                    })}
                   </SelectItem>
                 ))}
               </SelectContent>

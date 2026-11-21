@@ -1,5 +1,6 @@
 "use server";
 
+import { lotSuffix, lotAddress } from "@/lib/lot-label";
 import { requireCompanyRole, requireOCAccess } from "@/lib/auth";
 import { createServerClient } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
@@ -23,6 +24,7 @@ export interface LevyPreviewLot {
   lot_id: string;
   lot_number: number;
   unit_number: string | null;
+  street_address?: string | null;
   owner_display_name: string | null;
   owner_contact_email: string | null;
   lot_entitlement: number;
@@ -68,6 +70,7 @@ export interface LevyBatchDetail extends LevyBatchSummary {
     lot_id: string;
     lot_number: number;
     unit_number: string | null;
+    street_address?: string | null;
     owner_display_name: string | null;
     owner_contact_email: string | null;
     /** Internal LEV-NNNN reference. Kept for back-compat / audit. */
@@ -347,7 +350,7 @@ export async function generateLevyPreview(
   // Get lots
   const { data: lots } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, lot_entitlement, lot_liability")
+    .select("id, lot_number, unit_number, street_address, lot_entitlement, lot_liability")
     .eq("oc_id", ocId)
     .order("lot_number");
 
@@ -472,6 +475,7 @@ export async function generateLevyPreview(
       lot_id: lot.id,
       lot_number: lot.lot_number,
       unit_number: lot.unit_number,
+      street_address: lot.street_address ?? null,
       owner_display_name: owner?.owner_display_name ?? null,
       owner_contact_email: owner?.owner_contact_email ?? null,
       lot_entitlement: lotUE,
@@ -644,6 +648,7 @@ export async function previewSpecialLevy(
       lot_id: string;
       lot_number: number;
       unit_number: string | null;
+      street_address?: string | null;
       owner_display_name: string | null;
       liability: number;
       share: number;
@@ -660,7 +665,7 @@ export async function previewSpecialLevy(
 
   const { data: rawLots } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, lot_entitlement, lot_liability")
+    .select("id, lot_number, unit_number, street_address, lot_entitlement, lot_liability")
     .eq("oc_id", ocId)
     .order("lot_number");
   if (!rawLots?.length) return { error: "No lots found." };
@@ -674,6 +679,7 @@ export async function previewSpecialLevy(
     id: l.id,
     lot_number: l.lot_number,
     unit_number: l.unit_number,
+    street_address: l.street_address ?? null,
     liability:
       Number(l.lot_liability) > 0
         ? Number(l.lot_liability)
@@ -705,6 +711,7 @@ export async function previewSpecialLevy(
         lot_id: s.id,
         lot_number: s.lot_number,
         unit_number: s.unit_number,
+        street_address: s.street_address ?? null,
         owner_display_name: owners.get(s.id)?.owner_display_name ?? null,
         liability: s.liability,
         share: s.shareCents / 100,
@@ -823,7 +830,7 @@ export async function createLevyBatch(
   const lotIds = data.lots.map((l) => l.lot_id);
   const { data: lotsData } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number")
+    .select("id, lot_number, unit_number, street_address")
     .in("id", lotIds);
   const lotMap = new Map((lotsData ?? []).map((l) => [l.id, l]));
   const ownerMap = await getLotOwners(supabase, lotIds);
@@ -980,8 +987,8 @@ export async function createLevyBatch(
         date: new Date(`${issueDate}T00:00:00`),
         lotOwner: {
           name: ownerInfo?.owner_display_name ?? "Lot Owner",
-          lot_number: `${lotInfo?.lot_number ?? ""}${lotInfo?.unit_number ? ` Unit ${lotInfo.unit_number}` : ""}`,
-          address: oc?.address ?? "",
+          lot_number: lotInfo ? `${lotInfo.lot_number ?? ""}${lotSuffix(lotInfo)}` : "",
+          address: (lotInfo ? lotAddress(lotInfo, oc?.address, { bare: true }) : null) ?? oc?.address ?? "",
         },
         levyPeriod: { start: formatDateLong(data.period_start), end: formatDateLong(data.period_end) },
         lineItems: levy.items
@@ -1081,7 +1088,7 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
 
   const { data: levies } = await supabase
     .from("levy_notices")
-    .select("id, lot_id, reference_number, amount, status, pdf_url, lots!inner(lot_number, unit_number)")
+    .select("id, lot_id, reference_number, amount, status, pdf_url, lots!inner(lot_number, unit_number, street_address)")
     .eq("batch_id", batchId)
     .order("lots(lot_number)");
 
@@ -1136,6 +1143,7 @@ export async function getLevyBatchDetail(ocId: string, batchId: string): Promise
         lot_id: l.lot_id,
         lot_number: lot?.lot_number ?? 0,
         unit_number: lot?.unit_number ?? null,
+        street_address: lot?.street_address ?? null,
         owner_display_name: owner?.owner_display_name ?? null,
         owner_contact_email: owner?.owner_contact_email ?? null,
         reference_number: l.reference_number,
@@ -1402,7 +1410,7 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
   // Get levies with lot info and items
   const { data: levies } = await supabase
     .from("levy_notices")
-    .select("id, reference_number, amount, period_start, period_end, lot_id, lots!inner(lot_number, unit_number)")
+    .select("id, reference_number, amount, period_start, period_end, lot_id, lots!inner(lot_number, unit_number, street_address)")
     .eq("batch_id", batchId);
 
   const regenLotIds = (levies ?? []).map((l) => l.lot_id).filter(Boolean) as string[];
@@ -1442,8 +1450,8 @@ export async function regenerateBatch(ocId: string, batchId: string, newDueDate:
         date: issueDate ? new Date(`${issueDate}T00:00:00`) : new Date(),
         lotOwner: {
           name: owner?.owner_display_name ?? "Lot Owner",
-          lot_number: `${lot?.lot_number ?? ""}${lot?.unit_number ? ` Unit ${lot.unit_number}` : ""}`,
-          address: oc?.address ?? "",
+          lot_number: lot ? `${lot.lot_number ?? ""}${lotSuffix(lot)}` : "",
+          address: (lot ? lotAddress(lot, oc?.address, { bare: true }) : null) ?? oc?.address ?? "",
         },
         levyPeriod: { start: formatDateLong(levy.period_start), end: formatDateLong(levy.period_end) },
         lineItems: (items ?? []).map((i) => ({ description: i.description, amount: Number(i.amount) })),
@@ -1644,7 +1652,7 @@ export async function sendBatchEmailsCustom(
 
   const { data: levies } = await supabase
     .from("levy_notices")
-    .select("id, reference_number, amount, due_date, period_start, lot_id, lots!inner(lot_number, unit_number)")
+    .select("id, reference_number, amount, due_date, period_start, lot_id, lots!inner(lot_number, unit_number, street_address)")
     .eq("batch_id", batchId)
     .eq("status", "draft");
   if (!levies?.length) return { error: "No draft levies to send" };
@@ -1694,6 +1702,7 @@ export async function sendBatchEmailsCustom(
         ownerName: owner?.owner_display_name ?? null,
         lotNumber: lot?.lot_number ?? null,
         unitNumber: lot?.unit_number ?? null,
+        streetAddress: lot?.street_address ?? null,
         ocName: oc?.name ?? "",
         ocAddress: oc?.address ?? "",
         companyLogoUrl: managementCompanyLogoUrl,
@@ -1800,7 +1809,7 @@ export async function resendBatchEmailsCustom(
 
   const { data: levies } = await supabase
     .from("levy_notices")
-    .select("id, reference_number, amount, due_date, period_start, lot_id, lots!inner(lot_number, unit_number)")
+    .select("id, reference_number, amount, due_date, period_start, lot_id, lots!inner(lot_number, unit_number, street_address)")
     .eq("batch_id", batchId);
   if (!levies?.length) return { error: "No levies to resend" };
 
@@ -1834,6 +1843,7 @@ export async function resendBatchEmailsCustom(
         ownerName: owner?.owner_display_name ?? null,
         lotNumber: lot?.lot_number ?? null,
         unitNumber: lot?.unit_number ?? null,
+        streetAddress: lot?.street_address ?? null,
         ocName: oc?.name ?? "",
         ocAddress: oc?.address ?? "",
         companyLogoUrl: logoUrl,
@@ -1972,7 +1982,7 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
   // Get draft levies with lot info (owner resolved separately)
   const { data: levies } = await supabase
     .from("levy_notices")
-    .select("id, reference_number, amount, due_date, period_start, period_end, pdf_url, lot_id, lots!inner(lot_number, unit_number)")
+    .select("id, reference_number, amount, due_date, period_start, period_end, pdf_url, lot_id, lots!inner(lot_number, unit_number, street_address)")
     .eq("batch_id", batchId)
     .eq("status", "draft");
 
@@ -2016,6 +2026,7 @@ export async function sendBatchEmails(ocId: string, batchId: string) {
         ownerName: owner?.owner_display_name ?? null,
         lotNumber: lot?.lot_number ?? null,
         unitNumber: lot?.unit_number ?? null,
+        streetAddress: lot?.street_address ?? null,
         ocName: oc?.name ?? "",
         ocAddress: oc?.address ?? "",
         companyLogoUrl: managementCompany.logo_url,
@@ -2123,7 +2134,7 @@ export async function resendBatchEmails(ocId: string, batchId: string) {
   // Get ALL levies (not just drafts)
   const { data: levies } = await supabase
     .from("levy_notices")
-    .select("id, reference_number, amount, due_date, period_start, period_end, pdf_url, lot_id, lots!inner(lot_number, unit_number)")
+    .select("id, reference_number, amount, due_date, period_start, period_end, pdf_url, lot_id, lots!inner(lot_number, unit_number, street_address)")
     .eq("batch_id", batchId);
 
   if (!levies || levies.length === 0) return { error: "No levies to resend" };
@@ -2159,6 +2170,7 @@ export async function resendBatchEmails(ocId: string, batchId: string) {
         ownerName: owner?.owner_display_name ?? null,
         lotNumber: lot?.lot_number ?? null,
         unitNumber: lot?.unit_number ?? null,
+        streetAddress: lot?.street_address ?? null,
         ocName: oc?.name ?? "",
         ocAddress: oc?.address ?? "",
         companyLogoUrl: managementCompany.logo_url,

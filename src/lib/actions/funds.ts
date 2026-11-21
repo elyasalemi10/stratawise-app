@@ -94,6 +94,7 @@ export interface LotForFund {
   id: string;
   lot_number: number;
   unit_number: string | null;
+  street_address?: string | null;
   default_liability: number;
 }
 
@@ -102,13 +103,14 @@ export async function getOcLots(ocId: string): Promise<LotForFund[]> {
   const supabase = createServerClient();
   const { data } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, lot_liability, lot_entitlement")
+    .select("id, lot_number, unit_number, street_address, lot_liability, lot_entitlement")
     .eq("oc_id", ocId)
     .order("lot_number");
-  return ((data ?? []) as Array<{ id: string; lot_number: number; unit_number: string | null; lot_liability: number | null; lot_entitlement: number | null }>).map((l) => ({
+  return ((data ?? []) as Array<{ id: string; lot_number: number; unit_number: string | null; street_address: string | null; lot_liability: number | null; lot_entitlement: number | null }>).map((l) => ({
     id: l.id,
     lot_number: l.lot_number,
     unit_number: l.unit_number,
+    street_address: l.street_address ?? null,
     default_liability: Number(l.lot_liability ?? l.lot_entitlement ?? 1),
   }));
 }

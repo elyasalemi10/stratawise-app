@@ -1,5 +1,6 @@
 "use client";
 
+import { lotAddress } from "@/lib/lot-label";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { AlertTriangle, Download, FileSpreadsheet, Info, Upload } from "lucide-react";
@@ -124,16 +125,17 @@ export function Step3PostalContact({
 
   // On mount, seed each lot's service address from the OC site address WHEN
   // it isn't already set (resumed drafts that already have values are left
-  // alone). The unit number is prepended ("Unit 12, 5 Smith St…") so the
-  // seeded address is already addressed to the lot rather than the building
-  // reception.
+  // alone). The lot's own street address wins ("2 Sooty Lane, Pakenham"),
+  // else the unit is prepended ("12/5 Smith St…"), so the seeded address is
+  // already addressed to the lot rather than the building reception.
   const initialLots = useMemo<DraftLot[]>(() => {
     const seed = initialDraft.lots ?? [];
     return seed.map((l) => {
       const hasPostal = (l.owner_postal_address ?? "").trim().length > 0;
       if (!hasPostal && ocSiteAddress) {
-        const unit = (l.unit_number ?? "").toString().trim();
-        const prefixed = unit ? `Unit ${unit}, ${ocSiteAddress}` : ocSiteAddress;
+        // bare: a lot with neither falls back to the site address rather
+        // than "Lot 8, <address>", which is not postal.
+        const prefixed = lotAddress(l, ocSiteAddress, { bare: true }) ?? ocSiteAddress;
         return { ...l, owner_postal_address: prefixed };
       }
       return l;

@@ -68,7 +68,7 @@ export async function getOwnerLeviesPageData(): Promise<OwnerLeviesPageData> {
       .order("due_date", { ascending: false }),
     supabase
       .from("lots")
-      .select("id, oc_id, lot_number, unit_number, ocs:oc_id (name)")
+      .select("id, oc_id, lot_number, unit_number, street_address, ocs:oc_id (name)")
       .in("id", lotIds),
   ]);
 

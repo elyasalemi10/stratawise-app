@@ -15,6 +15,7 @@
 //     from 3 reconciliation call sites + the orchestrator auto-match path.
 // ============================================================================
 
+import { lotLabel } from "@/lib/lot-label";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   sendPaymentReceivedEmail,
@@ -247,7 +248,7 @@ export async function emitPaymentReceivedEmail(
       .single(),
     supabase
       .from("lots")
-      .select("lot_number, unit_number")
+      .select("lot_number, unit_number, street_address")
       .eq("id", cr.lot_id)
       .single(),
   ]);
@@ -264,7 +265,7 @@ export async function emitPaymentReceivedEmail(
   const ocAddress =
     (sub as { address: string } | null)?.address ?? "";
   const lotLabel = formatLotLabel(
-    lot as { lot_number: number; unit_number: string | null } | null,
+    lot as { lot_number: number; unit_number: string | null; street_address: string | null } | null,
   );
   const ocShortCode =
     (sub as { short_code: string } | null)?.short_code ?? "";
@@ -738,7 +739,7 @@ async function loadClaimContext(
       .single(),
     supabase
       .from("lots")
-      .select("lot_number, unit_number")
+      .select("lot_number, unit_number, street_address")
       .eq("id", c.lot_id)
       .single(),
   ]);
@@ -756,7 +757,7 @@ async function loadClaimContext(
     ocAddress: (sub as { address: string } | null)?.address ?? "",
     ocShortCode: (sub as { short_code: string } | null)?.short_code ?? "",
     lotLabel: formatLotLabel(
-      lot as { lot_number: number; unit_number: string | null } | null,
+      lot as { lot_number: number; unit_number: string | null; street_address: string | null } | null,
     ),
   };
 }
@@ -823,11 +824,9 @@ function formatOwnerName(profile: {
 }
 
 function formatLotLabel(
-  lot: { lot_number: number; unit_number: string | null } | null,
+  lot: { lot_number: number; unit_number: string | null; street_address?: string | null } | null,
 ): string {
-  if (!lot) return "";
-  if (lot.unit_number) return `Lot ${lot.lot_number} (Unit ${lot.unit_number})`;
-  return `Lot ${lot.lot_number}`;
+  return lot ? lotLabel(lot) : "";
 }
 
 function buildBodyPreview(params: SendPaymentReceivedEmailParams): string {

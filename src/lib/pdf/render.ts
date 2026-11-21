@@ -18,6 +18,7 @@
 // cleanup can route those call sites through this wrapper.
 // ============================================================================
 
+import { lotSuffix, lotAddress } from "@/lib/lot-label";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CHARGED_LEVY_STATUSES } from "@/lib/lot-balance";
 import type { LevyNoticeProps } from "@/lib/pdf/types";
@@ -174,7 +175,7 @@ async function assembleLevyNoticeProps(
       .single(),
     supabase
       .from("lots")
-      .select("lot_number, unit_number")
+      .select("lot_number, unit_number, street_address")
       .eq("id", levy.lot_id)
       .single(),
     supabase
@@ -220,7 +221,7 @@ async function assembleLevyNoticeProps(
   if (!sub) {
     throw new Error(`assembleLevyNoticeProps: oc missing for levy ${levyId}`);
   }
-  const lot = lotRow as { lot_number: number; unit_number: string | null } | null;
+  const lot = lotRow as { lot_number: number; unit_number: string | null; street_address: string | null } | null;
 
   // Reference: the owner's permanent payment_reference, falling back to a
   // "Lot N" label when a lot has none.
@@ -259,9 +260,9 @@ async function assembleLevyNoticeProps(
     ((memberRow as { name: string | null } | null)?.name ?? "").trim() ||
     "Lot Owner";
 
-  const lotLabel = lot
-    ? `${lot.lot_number ?? ""}${lot.unit_number ? ` Unit ${lot.unit_number}` : ""}`
-    : "";
+  // The template prints "Lot " itself, so this is the number plus whatever
+  // identifies the lot to its owner: "8, 2 Sooty Lane", "3, Unit 3B" or "8".
+  const lotLabel = lot ? `${lot.lot_number ?? ""}${lotSuffix(lot)}` : "";
 
   const hasEft = Boolean(sub.bank_bsb && sub.bank_account_number);
   const items = (itemsRow ?? []) as Array<{ description: string; amount: number | string }>;
@@ -373,7 +374,7 @@ async function assembleLevyNoticeProps(
     lotOwner: {
       name: ownerName,
       lot_number: lotLabel,
-      address: sub.address,
+      address: (lot ? lotAddress(lot, sub.address, { bare: true }) : null) ?? sub.address,
     },
     levyPeriod: {
       start: formatDateLong(levy.period_start),

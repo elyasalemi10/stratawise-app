@@ -1,5 +1,6 @@
 "use client";
 
+import { lotSuffix } from "@/lib/lot-label";
 import { useCallback } from "react";
 import Link from "next/link";
 import { ChevronLeft, MapPin, FileText, Mail, Inbox } from "lucide-react";
@@ -101,7 +102,7 @@ export function PastLotClient({ lotId }: { lotId: string }) {
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
           Lot {lot.lot_number}
-          {lot.unit_number ? ` · Unit ${lot.unit_number}` : ""} · {oc.plan_number}
+          {lotSuffix(lot)} · {oc.plan_number}
         </p>
         <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
           <MapPin className="h-3 w-3" />

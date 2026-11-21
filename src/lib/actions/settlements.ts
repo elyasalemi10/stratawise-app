@@ -199,7 +199,7 @@ export async function parseSettlementForReview(
 
   const { data: lot } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, oc_id")
+    .select("id, lot_number, unit_number, street_address, oc_id")
     .eq("id", lotId)
     .maybeSingle();
   if (!lot) return { error: "Lot not found" };
@@ -282,7 +282,7 @@ export async function parseSettlementAndMatchLot(
   if (parsedFields.lotNumber != null) {
     const { data: lotMatch } = await supabase
       .from("lots")
-      .select("id, lot_number, unit_number")
+      .select("id, lot_number, unit_number, street_address")
       .eq("oc_id", ocId)
       .eq("lot_number", parsedFields.lotNumber)
       .maybeSingle();

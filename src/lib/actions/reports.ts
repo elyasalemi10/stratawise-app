@@ -16,7 +16,7 @@ export async function getLevyHistory(ocId: string, lotId?: string) {
   const supabase = createServerClient();
   let query = supabase
     .from("levy_notices")
-    .select("id, lot_id, reference_number, period_start, period_end, amount, amount_paid, status, due_date, issued_at, pdf_url, lots!inner(lot_number, unit_number)")
+    .select("id, lot_id, reference_number, period_start, period_end, amount, amount_paid, status, due_date, issued_at, pdf_url, lots!inner(lot_number, unit_number, street_address)")
     .eq("oc_id", ocId)
     .order("due_date", { ascending: false });
 
@@ -45,6 +45,7 @@ export async function getLevyHistory(ocId: string, lotId?: string) {
     id: l.id,
     lot_number: l.lots?.lot_number,
     unit_number: l.lots?.unit_number,
+    street_address: l.lots?.street_address ?? null,
     owner_display_name: owners.get(l.lot_id)?.owner_display_name ?? null,
     reference_number: l.reference_number,
     period_start: l.period_start,
@@ -89,7 +90,7 @@ export async function getLotOwnerRegister(ocId: string) {
   const supabase = createServerClient();
   const { data } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number, lot_entitlement, lot_liability")
+    .select("id, lot_number, unit_number, street_address, lot_entitlement, lot_liability")
     .eq("oc_id", ocId)
     .order("lot_number");
 
@@ -102,6 +103,7 @@ export async function getLotOwnerRegister(ocId: string) {
     return {
       lot_number: lot.lot_number,
       unit_number: lot.unit_number,
+      street_address: lot.street_address ?? null,
       owner_display_name: owner?.owner_display_name ?? null,
       owner_status: owner?.owner_status ?? "unowned",
       // Only managers see contact details
@@ -282,6 +284,7 @@ export async function getOCCertificateData(ocId: string, lotId: string, applican
     ocAddress: oc.address,
     lotNumber: lot.lot_number,
     lotUnitNumber: lot.unit_number,
+    lotStreetAddress: lot.street_address ?? null,
     applicantName,
     applicantEmail,
     applicationDate: new Date().toISOString().split("T")[0],
@@ -332,7 +335,7 @@ export async function getOCLots(ocId: string) {
 
   const { data } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number")
+    .select("id, lot_number, unit_number, street_address")
     .eq("oc_id", ocId)
     .order("lot_number");
 
@@ -359,6 +362,7 @@ export interface OutstandingArrearsRow {
   lot_id: string;
   lot_number: number;
   unit_number: string | null;
+  street_address?: string | null;
   owner_display_name: string | null;
   principal_outstanding: number;
   interest_outstanding: number;
@@ -437,13 +441,14 @@ export async function getOutstandingArrearsReport(
   // Hydrate lot metadata + owners.
   const { data: lotsData } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number")
+    .select("id, lot_number, unit_number, street_address")
     .in("id", lotIds)
     .order("lot_number");
   const lots = (lotsData ?? []) as Array<{
     id: string;
     lot_number: number;
     unit_number: string | null;
+    street_address?: string | null;
   }>;
   const owners = await getLotOwners(supabase, lotIds);
 
@@ -465,6 +470,7 @@ export async function getOutstandingArrearsReport(
       lot_id: lot.id,
       lot_number: lot.lot_number,
       unit_number: lot.unit_number,
+      street_address: lot.street_address ?? null,
       owner_display_name: owners.get(lot.id)?.owner_display_name ?? null,
       principal_outstanding: round2(agg.principal),
       interest_outstanding: round2(agg.interest),
@@ -496,6 +502,7 @@ export interface OwnerStatementReport {
   lot_id: string;
   lot_number: number;
   unit_number: string | null;
+  street_address?: string | null;
   owner_display_name: string | null;
   from_date: string;
   to_date: string;
@@ -533,11 +540,11 @@ export async function getOwnerStatement(
   // Hydrate lot + owner.
   const { data: lotRow } = await supabase
     .from("lots")
-    .select("id, lot_number, unit_number")
+    .select("id, lot_number, unit_number, street_address")
     .eq("id", lotId)
     .single();
   if (!lotRow) throw new Error("Lot not found");
-  const lot = lotRow as { id: string; lot_number: number; unit_number: string | null };
+  const lot = lotRow as { id: string; lot_number: number; unit_number: string | null; street_address: string | null };
   const owners = await getLotOwners(supabase, [lot.id]);
 
   // Opening balance = sum of (credit − debit) across active entries with
@@ -594,6 +601,7 @@ export async function getOwnerStatement(
     lot_id: lot.id,
     lot_number: lot.lot_number,
     unit_number: lot.unit_number,
+    street_address: lot.street_address ?? null,
     owner_display_name: owners.get(lot.id)?.owner_display_name ?? null,
     from_date: fromDateIso,
     to_date: toDateIso,

@@ -15,12 +15,13 @@ type Result<T> = Ok<T> | Err;
 
 // ─── updateLotDetails ───────────────────────────────────────────────────────
 // Edits the lots table itself. Lot number is intentionally NOT editable
-// (Item 9). Unit number / entitlement / liability are; the popover enforces
+// (Item 9). Street address / unit number / entitlement / liability are; the popover enforces
 // confirmation upstream.
 
 const updateLotDetailsSchema = z.object({
   lot_id: z.string().uuid(),
   unit_number: z.string().trim().max(20).nullable().optional(),
+  street_address: z.string().trim().max(200).nullable().optional(),
   lot_entitlement: z.number().positive().nullable().optional(),
   lot_liability: z.number().positive().nullable().optional(),
 });
@@ -36,7 +37,7 @@ export async function updateLotDetails(
 
   const { data: before, error: fetchErr } = await supabase
     .from("lots")
-    .select("id, oc_id, lot_number, unit_number, lot_entitlement, lot_liability")
+    .select("id, oc_id, lot_number, unit_number, street_address, lot_entitlement, lot_liability")
     .eq("id", parsed.data.lot_id)
     .single();
   if (fetchErr || !before) return { ok: false, error: "Lot not found" };
@@ -46,6 +47,7 @@ export async function updateLotDetails(
 
   const update: Record<string, unknown> = {};
   if (parsed.data.unit_number !== undefined) update.unit_number = parsed.data.unit_number;
+  if (parsed.data.street_address !== undefined) update.street_address = parsed.data.street_address;
   if (parsed.data.lot_entitlement !== undefined) update.lot_entitlement = parsed.data.lot_entitlement;
   if (parsed.data.lot_liability !== undefined) update.lot_liability = parsed.data.lot_liability;
   if (Object.keys(update).length === 0) return { ok: true, data: { lot_id: parsed.data.lot_id } };

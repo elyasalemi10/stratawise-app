@@ -124,6 +124,7 @@ export interface FundLotLiability {
 export interface BudgetReportLot {
   lot_number: number;
   unit_number?: string | null;
+  street_address?: string | null;
   liability: number;
 }
 
